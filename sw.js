@@ -1,5 +1,5 @@
 /* SkyWatch service worker — app-shell caching + offline fallback */
-const VERSION = 'skywatch-v191';
+const VERSION = 'skywatch-v192';
 const SHELL = [
   './',
   './index.html',
@@ -45,7 +45,15 @@ self.addEventListener('push', (e) => {
     data: d.data || {},
     actions: (d.actions || []).slice(0, 2)   // watches surface at most two
   };
-  e.waitUntil(self.registration.showNotification(title, opts));
+  e.waitUntil((async () => {
+    // Admin login pings are also shown as an in-app card; if a window is focused, skip the
+    // OS notification so the admin isn't double-pinged.
+    if (d.data && d.data.type === 'login') {
+      const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (cs.some((c) => c.visibilityState === 'visible' || c.focused)) return;
+    }
+    return self.registration.showNotification(title, opts);
+  })());
 });
 
 // Focus (or open) the app when a pass-alert notification is clicked.

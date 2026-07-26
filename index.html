@@ -2755,7 +2755,7 @@
 </script>
 
 <script>
-const BUILD = 'v191';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v192';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -6074,6 +6074,41 @@ async function loadAdmins(){
   computeAdmin();
   syncSettingsTabs();
   if(isAdminUser) startFeedbackWatch();
+  refreshLoginWatch();
+}
+/* ---------- Admin: new-login notifications ----------
+   One global toggle lives at config/flags.notifyLogins (default OFF). While it's on, every
+   client records a session start to /logins; an admin with the app focused gets a premium
+   card, and when they're away the notifyAdminsOfLogin Cloud Function delivers a push. While
+   it's off, nothing is written — so the feature is entirely free when unused. */
+let unsubLoginWatch=null, loginWatchStart=0, loginLogged=false;
+function refreshLoginWatch(){
+  const want = !!(isAdminUser && FLAGS && FLAGS.notifyLogins===true && currentUser && window.fb);
+  if(want && !unsubLoginWatch){
+    const {db, collection, onSnapshot, query, orderBy, limit}=window.fb;
+    loginWatchStart=Date.now();
+    unsubLoginWatch=onSnapshot(query(collection(db,'logins'), orderBy('ts','desc'), limit(8)), snap=>{
+      snap.docChanges().forEach(ch=>{ if(ch.type!=='added') return; const d=ch.doc.data();
+        if(!d || !d.ts || d.ts<=loginWatchStart) return;             // skip the backlog on open
+        if(currentUser && d.uid===currentUser.uid) return;            // not my own login
+        if(appIsVisible()) showPremiumCard({ hue:'90,209,255', icon:'👤', kicker:'New login',
+          name:'@'+(d.username||'someone'), desc:(d.displayName?d.displayName+' · ':'')+'just opened SkyWatch',
+          ms:5000, top:true });
+        // Not focused → the service worker shows the pushed notification instead (no double-ping).
+      });
+    }, err=>console.warn('login watch', err));
+  } else if(!want && unsubLoginWatch){ unsubLoginWatch(); unsubLoginWatch=null; }
+}
+function stopLoginWatch(){ if(unsubLoginWatch){ unsubLoginWatch(); unsubLoginWatch=null; } loginLogged=false; }
+async function logMyLogin(){
+  if(loginLogged || !currentUser || !window.fb) return;
+  if(!FLAGS || FLAGS.notifyLogins!==true) return;                    // feature off → no write, no cost
+  loginLogged=true;
+  try{ const {db, collection, addDoc}=window.fb;
+    await addDoc(collection(db,'logins'), { uid:currentUser.uid,
+      username:(myProfile&&myProfile.username)||'', displayName:currentUser.displayName||'',
+      ts:Date.now(), ua:navigator.userAgent.slice(0,120) });
+  }catch(e){ console.warn('login log', e); }
 }
 // Every privileged write goes through here, so there's always a trail.
 async function adminLog(action, target, detail){
@@ -6455,6 +6490,7 @@ async function loadConfig(){
   if(!window.fb) return;
   const {db, doc, getDoc}=window.fb;
   try{ const f=await getDoc(doc(db,'config','flags')); if(f.exists()) FLAGS=f.data(); }catch(e){}
+  refreshLoginWatch();                     // flags now known — (re)evaluate the admin login watcher
   try{
     const b=await getDoc(doc(db,'config','broadcast'));
     if(!b.exists()) return;
@@ -6841,6 +6877,9 @@ async function admRenderAdmins(pane){
     admins=snap.docs.map(d=>Object.assign({_id:d.id}, d.data()));
   }catch(e){ admins=[]; }
   pane.innerHTML=
+    '<div class="stg"><div class="lbl">Notify me on new logins'+
+      '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
+      '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
     '<div class="usr-note">Bootstrap admins live in the app source. These are added at runtime and take effect on their next launch.</div>'+
     (ADMIN_BOOTSTRAP.filter(u=>u!=='PASTE_YOUR_UID_HERE').map(u=>
       '<div class="dev-row"><span class="dev-k">built in</span><span class="dev-v">'+esc(u)+'</span></div>').join(''))+
@@ -6848,7 +6887,20 @@ async function admRenderAdmins(pane){
       '<span class="dev-v"><button class="adm-x" data-a="adm-del:'+esc(a._id)+'">remove</button></span></div>').join('')+
     '<div class="usr-row"><input id="adm-new" placeholder="@username to promote" /><button id="adm-add">Add</button></div>';
   $('adm-add').onclick=admAddAdmin;
+  const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   admWire(pane);
+}
+async function admToggleLoginNotify(){
+  const next = !(FLAGS.notifyLogins===true);
+  try{
+    const {db, doc, setDoc}=window.fb;
+    await setDoc(doc(db,'config','flags'), {notifyLogins:next}, {merge:true});
+    FLAGS.notifyLogins=next;
+    const ln=$('adm-loginnotify'); if(ln) ln.classList.toggle('on', next);
+    adminLog('login-notify', next?'on':'off');
+    refreshLoginWatch();
+    showToast(next?'🔔 You’ll be notified when people log in':'Login notifications off', true);
+  }catch(e){ showErr('Could not update: '+(e.code||e.message||e)); }
 }
 async function admAddAdmin(){
   const raw=($('adm-new').value||'').trim().replace(/^@/,'').toLowerCase();
@@ -7519,6 +7571,7 @@ function startSocial(user){
   }, err=>console.warn('requests sub',err));
   loadAllUsers();
   startPresence(); shareLocation(); startPings(user.uid); startFeedWatch();
+  setTimeout(logMyLogin, 2500);            // record this session start (only if admin login-notify is on)
   if(friendsTick) clearInterval(friendsTick);
   friendsTick=setInterval(evalFriendStatus, 6000);   // catch offline (time-based) transitions
   renderMe();
@@ -7532,7 +7585,7 @@ function stopSocial(){
   Object.values(friendProfileUnsubs).forEach(u=>{ try{u();}catch(e){} }); friendProfileUnsubs={};
   friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear();
   unlockQueue=[]; unlockBusy=false;   // the celebrated-set is stored per account, not reset here
-  stopFeedbackWatch(); stopMyFeedback(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
+  stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
   rebuildSeenSet();   // clears the seen set on sign-out
   if(seenOnly){ seenOnly=false; const st=$('seen-toggle'); if(st) st.classList.remove('on'); }
   if(friendsTick){ clearInterval(friendsTick); friendsTick=null; }
