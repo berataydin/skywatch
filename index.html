@@ -636,6 +636,14 @@
   .ast-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
   .ast-asof{font-size:11px;color:var(--muted);margin-right:auto}
   .ast-tbtn{width:auto;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:8px 12px}
+  /* Filter acronym explainer */
+  .filt-help{margin:6px 2px 2px;font-size:12px;color:var(--muted)}
+  .filt-help summary{cursor:pointer;font-weight:600;color:var(--text);list-style:none;padding:6px 2px}
+  .filt-help summary::-webkit-details-marker{display:none}
+  .filt-help summary::before{content:'ⓘ ';opacity:.75}
+  .filt-help[open] summary::before{content:'▾ '}
+  .filt-help-body{line-height:1.55;padding:2px 2px 6px}
+  .filt-help-body b{color:var(--text)}
   #snapbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
     padding:11px;border-radius:11px;border:1px solid var(--border);background:rgba(120,160,255,.08);
     color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
@@ -2590,11 +2598,25 @@
       <button data-v="all" class="sel">All</button>
       <button data-v="LEO">LEO</button>
       <button data-v="MEO">MEO</button>
+      <button data-v="HEO">HEO</button>
       <button data-v="GEO">GEO</button>
+    </div>
+    <div class="fseg" id="fseg-type">
+      <button data-v="all" class="sel">All types</button>
+      <button data-v="PAY">Payload</button>
+      <button data-v="RB">R/B</button>
+      <button data-v="DEB">Debris</button>
     </div>
     <button id="fav-toggle" class="fav-toggle" title="Show only your favorites">★ Favorites</button>
     <button id="seen-toggle" class="seen-toggle" title="Show only satellites you've marked seen">👁 Seen</button>
   </div>
+  <details class="filt-help">
+    <summary>What do these mean?</summary>
+    <div class="filt-help-body">
+      <b>Orbit</b> — <b>LEO</b>: Low Earth Orbit, under ~2,000 km (ISS, Starlink). <b>MEO</b>: Medium, ~2,000–35,000 km (GPS, Galileo). <b>HEO</b>: Highly Elliptical — an egg-shaped orbit that swings in low then far out (Molniya, transfer orbits). <b>GEO</b>: Geostationary, ~35,786 km — parked over one spot on Earth.<br><br>
+      <b>Type</b> — <b>Payload</b>: a working or defunct satellite. <b>R/B</b>: Rocket Body — a spent upper stage left in orbit. <b>Debris</b>: fragments from break-ups or collisions. <b>Unknown</b> (its own layer): an unidentified piece.
+    </div>
+  </details>
   <div class="legend" id="legend"></div>
   <div id="launchlist"></div>
   <button id="installbtn">⬇ Install app</button>
@@ -2608,7 +2630,7 @@
   <button id="mb-layers"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 21 7l-9 4.5L3 7l9-4.5Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg></span>Layers</button>
   <button id="mb-over"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a9.5 9.5 0 0 1 14 0"/><path d="M8 15.5a5 5 0 0 1 8 0"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/></svg></span>Sky</button>
   <button id="mb-friends"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.6 6.3a3 3 0 0 1 .2 5.5"/><path d="M16.6 13.3a5.5 5.5 0 0 1 3.9 5.2"/></svg></span>Friends</button>
-  <button id="mb-feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a9.5 9.5 0 0 1 14 0"/><path d="M8 15.5a5 5 0 0 1 8 0"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/></svg></span>Feed</button>
+  <button id="mb-feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="7" r="1.3" fill="currentColor" stroke="none"/><path d="M9 7h10"/><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><path d="M9 12h10"/><circle cx="5" cy="17" r="1.3" fill="currentColor" stroke="none"/><path d="M9 17h10"/></svg></span>Feed</button>
   <button id="mb-board"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>Awards</button>
   <button id="mb-settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M21.4 12h-3M5.6 12h-3M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1M18.6 18.6l-2.1-2.1M7.5 7.5 5.4 5.4"/></svg></span>Settings</button>
 </nav>
@@ -2755,7 +2777,7 @@
 </script>
 
 <script>
-const BUILD = 'v192';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v194';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -2814,12 +2836,14 @@ const GROUPS = [
   { id:'stations', label:'Stations',  color:'#ff8c42', cap:40 },          // other crewed stations & modules
   { id:'visual',   label:'Brightest', color:'#b9c7e6', cap:170 },
   { id:'starlink', label:'Starlink',  color:'#5ad1ff', cap:150 },
+  { id:'trains',   label:'Starlink trains', color:'#b9f0ff', virtual:true },  // cross-listed: low, freshly-launched Starlinks flying in a line
   { id:'gps-ops',  label:'GPS',       color:'#ffd34d', cap:40 },
   { id:'galileo',  label:'Galileo',   color:'#c58cff', cap:40 },
   { id:'oneweb',   label:'OneWeb',    color:'#8ad4ff', cap:150 },         // the other big LEO broadband constellation
   { id:'amateur',  label:'Ham radio', color:'#ffb35a', cap:80 },          // amateur-radio satellites you can actually work
   { id:'geo',      label:'GEO belt',  color:'#e8e0a8', cap:200 },         // the geostationary ring
   { id:'weather',  label:'Weather',   color:'#57e08a', cap:60 },
+  { id:'unknown',  label:'Unknown',   color:'#c3ccdb', virtual:true },    // cross-listed: unidentified pieces in the loaded set (name-based)
   { id:'decaying', label:'Decaying',  color:'#ff4d4d', virtual:true },    // cross-listed: low, reentering orbits (not counted toward the orbit total)
   { id:'rocket',   label:'Launches',  color:'#ff6b35', launches:true },   // upcoming rocket launches (Launch Library 2)
 ];
@@ -2855,7 +2879,8 @@ const prefs = { units:'metric', time:'24', autorotate:true, issPath:true, cutoff
 // Favorites (starred sats) + client-side filters (no network).
 let favs = new Set();
 let seenSet = new Set();  // ids of satellites you've marked "seen" (from your profile)
-let altFilter = 'all';   // all | LEO | MEO | GEO
+let altFilter = 'all';   // all | LEO | MEO | HEO | GEO
+let typeFilter = 'all';  // all | PAY | RB | DEB
 let favOnly = false;
 let seenOnly = false;
 function rebuildSeenSet(){ seenSet = new Set((myProfile && Array.isArray(myProfile.seen)) ? myProfile.seen.map(x=>x.id) : []); }
@@ -3645,7 +3670,7 @@ function startPhotoTick(){
 let usePoints=false, useWorker=false, satPoints=null, satGeo=null, propWorker=null,
     workerBusy=false, tickTimer=null, workerWatch=null, workerGen=0;
 const POINT_CAP=12000, pointSatIndex=[], WHITE=[1,1,1];
-let DECAY_RGB=null;   // lazily-computed highlight colour for the Decaying layer
+let DECAY_RGB=null, TRAIN_RGB=null, UNK_RGB=null;   // lazily-computed highlight colours for cross-listed layers
 function hexRgb(hex){
   const h=(hex||'#b9c7e6').replace('#',''); const n=parseInt(h.length===3
     ? h.split('').map(c=>c+c).join('') : h, 16);
@@ -3741,6 +3766,8 @@ function renderPoints(){
     const isSel = s===selected;
     const rgb = (isSel || up) ? WHITE
       : (enabled['decaying'] && isDecaying(s)) ? (DECAY_RGB || (DECAY_RGB=hexRgb('#ff4d4d')))
+      : (enabled['trains'] && isStarlinkTrain(s)) ? (TRAIN_RGB || (TRAIN_RGB=hexRgb('#b9f0ff')))
+      : (enabled['unknown'] && objType(s)==='UNK') ? (UNK_RGB || (UNK_RGB=hexRgb('#c3ccdb')))
       : (s._rgb || (s._rgb=hexRgb(s.color)));
     col[k*3]=rgb[0]; col[k*3+1]=rgb[1]; col[k*3+2]=rgb[2];
     sz[k] = isSel ? 11 : (s.id==='25544') ? 9 : up ? 6 : (favs.size && favs.has(s.id) ? 5.5 : 3.2);
@@ -4642,9 +4669,11 @@ function renderLegend(){
         if(id==='rocket'){ const p=launchPins[0];
           if(p){ if(isMobile()) closeSheets(); flyTo(p.lat,p.lng,1.6,900); if(navigator.vibrate){try{navigator.vibrate(15);}catch(e){}} showToast('🎯 '+p.launch.name); }
           else showErr('No launch pads to center on yet.'); return; }
-        const sat = id==='decaying'
-          ? SATS.find(s=> isDecaying(s) && typeof s.lat==='number' && typeof s.lng==='number')
-          : SATS.find(s=> s.group===id && typeof s.lat==='number' && typeof s.lng==='number');
+        const hasPos = s=> typeof s.lat==='number' && typeof s.lng==='number';
+        const sat = id==='decaying' ? SATS.find(s=> isDecaying(s) && hasPos(s))
+          : id==='trains'  ? SATS.find(s=> isStarlinkTrain(s) && hasPos(s))
+          : id==='unknown' ? SATS.find(s=> objType(s)==='UNK' && hasPos(s))
+          : SATS.find(s=> s.group===id && hasPos(s));
         if(sat){
           if(isMobile()) closeSheets();
           flyTo(sat.lat, sat.lng, 1.6, 900);
@@ -4663,7 +4692,7 @@ function renderLegend(){
       const id=n.dataset.id; enabled[id]=!enabled[id];
       n.classList.toggle('off',!enabled[id]);
       if(id==='iss') updateIssOrbit();
-      if(id==='decaying') renderFrame();              // re-colour the decaying highlight on/off
+      if(id==='decaying'||id==='trains'||id==='unknown') renderFrame();   // re-colour the cross-listed highlight on/off
       if(id==='starlink' && enabled['starlink']) loadMoreStarlink();
       if(id==='rocket'){ renderLaunchList(); if(enabled['rocket'] && !LAUNCHES.length) loadLaunches(); renderFrame(); }
       saveSettings();
@@ -4694,9 +4723,17 @@ function renderLayerItems(id, box){
       if(l){ if(isMobile()) closeSheets(); selectLaunch(l); } });
     return;
   }
-  const decaying = id==='decaying';
-  let items = decaying ? SATS.filter(isDecaying) : SATS.filter(s=>s.group===id).slice();
-  if(!items.length){ box.innerHTML='<div class="lgi-empty">'+(decaying?'No decaying objects tracked right now.':'Still loading…')+'</div>'; return; }
+  const decaying = id==='decaying', trains = id==='trains', unknown = id==='unknown';
+  const virtColor = trains ? '#b9f0ff' : unknown ? '#c3ccdb' : '#ff4d4d';
+  let items = decaying ? SATS.filter(isDecaying)
+    : trains ? SATS.filter(isStarlinkTrain)
+    : unknown ? SATS.filter(s=>objType(s)==='UNK')
+    : SATS.filter(s=>s.group===id).slice();
+  if(!items.length){ box.innerHTML='<div class="lgi-empty">'+(
+      decaying ? 'No decaying objects tracked right now.'
+    : trains ? 'No low Starlink train flying right now.'
+    : unknown ? 'No unidentified objects in the tracked set.'
+    : 'Still loading…')+'</div>'; return; }
   if(decaying) items.sort((a,b)=>{ const A=orbitDetails(a), B=orbitDetails(b); return (A?A.per:9e9)-(B?B.per:9e9); });  // most urgent (lowest) first
   else if(observer) items.sort((a,b)=>(b.elevation??-99)-(a.elevation??-99));   // overhead first
   else items.sort((a,b)=>(a.name||'').localeCompare(b.name||''));               // else alphabetical
@@ -4708,7 +4745,7 @@ function renderLayerItems(id, box){
       meta = up ? (Math.round(s.elevation)+'° up'+(s.azimuth!=null?(' · '+azCompass(s.azimuth)):''))
         : (s.altKm ? fmtDist(s.altKm)+' up' : 'below horizon'); }
     return '<button class="nt-rank lgi" data-id="'+esc(s.id)+'">'+
-      '<span class="nt-num lgi-dot" style="color:'+(decaying?'#ff4d4d':s.color)+'"></span>'+
+      '<span class="nt-num lgi-dot" style="color:'+((decaying||trains||unknown)?virtColor:s.color)+'"></span>'+
       '<span class="nt-body"><span class="nt-nm">'+esc(s.name)+'</span>'+
       '<span class="nt-when">'+meta+'</span></span></button>';
   }).join('') + (total>60 ? '<div class="lgi-empty">…and '+(total-60)+' more</div>' : '');
@@ -4719,6 +4756,8 @@ function renderLayerItems(id, box){
 function updateLegendCounts(){
   GROUPS.forEach(g=>{
     const c = g.id==='decaying' ? SATS.filter(isDecaying).length
+      : g.id==='trains' ? SATS.filter(isStarlinkTrain).length
+      : g.id==='unknown' ? SATS.filter(s=>objType(s)==='UNK').length
       : g.launches ? LAUNCHES.length
       : SATS.filter(s=>s.group===g.id).length;
     const el=$('ct-'+g.id); if(el) el.textContent=c;
@@ -4762,10 +4801,29 @@ function orbitClass(s){
   if(s._oc) return s._oc;
   let type='LEO';
   try{
-    const a=s.satrec.a*6378.137, e=s.satrec.ecco||0, per=a*(1-e)-6378.137;
-    type = per<2000 ? 'LEO' : per<25000 ? 'MEO' : 'GEO';
+    const a=s.satrec.a*6378.137, e=s.satrec.ecco||0;
+    const per=a*(1-e)-6378.137, apo=a*(1+e)-6378.137;
+    if(e>0.25 && apo>per+8000) type='HEO';                          // highly elliptical (Molniya, GTO, Tundra)
+    else type = per<2000 ? 'LEO' : per<25000 ? 'MEO' : 'GEO';
   }catch(e){}
   return s._oc=type;
+}
+// Object class from the catalogue name (Celestrak encodes it there): rocket bodies carry "R/B",
+// debris "DEB", unidentified pieces "OBJECT x"/"TBA"/"UNKNOWN"; anything else is a payload.
+function objType(s){
+  if(s._ot) return s._ot;
+  const n=(s.name||'').toUpperCase().trim();
+  let t='PAY';
+  if(/\bR\/B\b|ROCKET BODY|\bAKM\b|\bPKM\b/.test(n)) t='RB';
+  else if(/\bDEB\b|DEBRIS|COOLANT|WESTFORD NEEDLE/.test(n)) t='DEB';
+  else if(!n || /^UNKNOWN|^TBA\b|^OBJECT [A-Z0-9]+$|^UNIDENTIFIED|^\d+$/.test(n)) t='UNK';
+  return s._ot=t;
+}
+// A freshly-launched Starlink still low enough to be flying in a visible "train".
+function isStarlinkTrain(s){
+  if(s.group!=='starlink') return false;
+  const a=meanAltKm(s);
+  return a!=null && a<TRAIN_MAX_ALT;
 }
 function orbitDetails(s){
   try{
@@ -4918,6 +4976,7 @@ function passesFilter(s){
   if(favOnly && !favs.has(s.id)) return false;
   if(seenOnly && !seenSet.has(s.id)) return false;
   if(altFilter!=='all' && orbitClass(s)!==altFilter) return false;
+  if(typeFilter!=='all' && objType(s)!==typeFilter) return false;
   return true;
 }
 
@@ -4981,23 +5040,28 @@ function doSearch(q){
 
 /* ---------- Filters + autocomplete ---------- */
 function initFilters(){
-  // Filters apply to the map, so close the sheet and hand the user straight back to it.
-  const backToMap=()=>{ if(isMobile()) closeSheets(); };
+  // Filters apply to the map behind the panel — but leave the panel open so you can stack
+  // several filters, then close it yourself when you're done.
   document.querySelectorAll('#fseg-alt button').forEach(b=>b.onclick=()=>{
     altFilter=b.dataset.v;
     document.querySelectorAll('#fseg-alt button').forEach(x=>x.classList.toggle('sel', x===b));
-    renderFrame(); backToMap();
+    renderFrame();
+  });
+  document.querySelectorAll('#fseg-type button').forEach(b=>b.onclick=()=>{
+    typeFilter=b.dataset.v;
+    document.querySelectorAll('#fseg-type button').forEach(x=>x.classList.toggle('sel', x===b));
+    renderFrame();
   });
   const ft=$('fav-toggle');
   if(ft) ft.onclick=()=>{ favOnly=!favOnly; ft.classList.toggle('on', favOnly);
     if(favOnly && favs.size===0) showToast('No favorites yet — open a satellite and tap ☆ Favorite.');
-    renderFrame(); backToMap(); };
+    renderFrame(); };
   const st=$('seen-toggle');
   if(st) st.onclick=()=>{ seenOnly=!seenOnly; st.classList.toggle('on', seenOnly);
     if(seenOnly && seenSet.size===0) showToast(currentUser
       ? 'Nothing marked seen yet — open a satellite and tap 👁 Mark as seen.'
       : 'Sign in and mark satellites as “seen” to use this filter.');
-    renderFrame(); backToMap(); };
+    renderFrame(); };
   const inp=$('search');
   if(inp){
     inp.addEventListener('input', ()=>renderAutocomplete(inp.value));
