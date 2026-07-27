@@ -440,6 +440,50 @@
   #friends.tab-add{--neon-c:93,227,198}        /* the Community pane runs teal */
   #friends.tab-add #fr-pane-friends{display:none}
   #friends.tab-add #fr-pane-add{display:block}
+  /* Chat pane */
+  #fr-pane-chat{display:none}
+  #friends.tab-chat{--neon-c:150,200,255}
+  #friends.tab-chat #fr-pane-friends{display:none}
+  #friends.tab-chat #fr-pane-add{display:none}
+  #friends.tab-chat #fr-pane-chat{display:flex;flex-direction:column;min-height:0;flex:1}
+  #chat-home{display:flex;flex-direction:column;min-height:0;flex:1}
+  #chat-convos{overflow-y:auto;flex:1;min-height:0}
+  .chat-convo{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 12px;margin-bottom:7px;
+    border-radius:13px;border:1px solid var(--border);background:rgba(120,160,255,.05);cursor:pointer}
+  .chat-convo.unread{border-color:rgba(150,200,255,.55);background:rgba(150,200,255,.1)}
+  .chat-cv-body{min-width:0;display:flex;flex-direction:column;gap:2px;flex:1}
+  .chat-cv-nm{font-weight:600;color:var(--text);font-size:14px;display:flex;align-items:center;gap:6px}
+  .chat-cv-prev{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-convo.unread .chat-cv-prev{color:var(--text)}
+  .chat-dot{width:8px;height:8px;border-radius:50%;background:#5aa2ff;box-shadow:0 0 8px #5aa2ff;flex:0 0 auto}
+  #chat-thread{display:none;flex-direction:column;min-height:0;flex:1}
+  .chat-head{display:flex;align-items:center;gap:8px;padding:2px 0 8px;border-bottom:1px solid var(--border);margin-bottom:8px}
+  #chat-back{width:34px;height:34px;flex:0 0 auto;border-radius:9px;border:1px solid var(--border);background:rgba(120,160,255,.08);
+    color:var(--text);font-size:20px;line-height:1;cursor:pointer}
+  #chat-with{font-weight:700;color:rgb(150,200,255);font-size:15px}
+  #chat-msgs{flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px 2px}
+  .chat-msg{display:flex;flex-direction:column;max-width:80%}
+  .chat-msg.me{align-self:flex-end;align-items:flex-end}
+  .chat-msg.them{align-self:flex-start;align-items:flex-start}
+  .chat-bub{padding:8px 12px;border-radius:14px;font-size:14px;line-height:1.35;word-break:break-word;white-space:pre-wrap}
+  .chat-msg.me .chat-bub{background:linear-gradient(180deg,rgba(90,162,255,.9),rgba(70,130,220,.85));color:#fff;border-bottom-right-radius:5px}
+  .chat-msg.them .chat-bub{background:rgba(255,255,255,.08);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:5px}
+  .chat-t{font-size:10px;color:var(--muted);margin:1px 4px 0}
+  .chat-inputbar{display:flex;gap:8px;align-items:flex-end;padding-top:8px;border-top:1px solid var(--border);margin-top:8px}
+  #chat-text{flex:1;resize:none;max-height:120px;border-radius:12px;padding:10px 12px;border:1px solid var(--border);
+    background:rgba(0,0,0,.3);color:var(--text);font:inherit;font-size:14px;line-height:1.35}
+  #chat-text:focus{outline:none;border-color:rgba(150,200,255,.6);box-shadow:0 0 0 2px rgba(150,200,255,.18)}
+  #chat-send{flex:0 0 auto;width:44px;height:44px;border-radius:12px;border:1px solid rgba(150,200,255,.5);
+    background:rgba(150,200,255,.16);color:rgb(150,200,255);font-size:17px;cursor:pointer}
+  #chat-send:hover{background:rgba(150,200,255,.28)}
+  /* Nav-bar unread chat badge on the Friends button */
+  #mb-friends{position:relative}
+  .mb-chatbadge{position:absolute;top:1px;right:8px;font-size:13px;line-height:1;display:none;pointer-events:none;
+    transform-origin:50% 60%;filter:drop-shadow(0 0 5px rgba(150,200,255,.9))}
+  .mb-chatbadge.show{display:block;animation:mb-chat-shake 3s ease-in-out infinite}
+  @keyframes mb-chat-shake{0%,84%,100%{transform:rotate(0)}
+    86%{transform:rotate(-17deg)}88%{transform:rotate(15deg)}90%{transform:rotate(-11deg)}92%{transform:rotate(7deg)}94%{transform:rotate(-3deg)}}
+  @media (prefers-reduced-motion: reduce){ .mb-chatbadge.show{animation:none} }
   #bd-pane-rank{display:none}
   #board.tab-rank #bd-pane-you{display:none}
   #board.tab-rank #bd-pane-rank{display:block}
@@ -2629,7 +2673,7 @@
 <nav id="mbar">
   <button id="mb-layers"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 21 7l-9 4.5L3 7l9-4.5Z"/><path d="M3 12l9 4.5L21 12"/><path d="M3 16.5 12 21l9-4.5"/></svg></span>Layers</button>
   <button id="mb-over"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a9.5 9.5 0 0 1 14 0"/><path d="M8 15.5a5 5 0 0 1 8 0"/><circle cx="12" cy="19" r="1.1" fill="currentColor" stroke="none"/></svg></span>Sky</button>
-  <button id="mb-friends"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.6 6.3a3 3 0 0 1 .2 5.5"/><path d="M16.6 13.3a5.5 5.5 0 0 1 3.9 5.2"/></svg></span>Friends</button>
+  <button id="mb-friends"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.6 6.3a3 3 0 0 1 .2 5.5"/><path d="M16.6 13.3a5.5 5.5 0 0 1 3.9 5.2"/></svg></span>Friends<span id="mb-chatbadge" class="mb-chatbadge">💬</span></button>
   <button id="mb-feed"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="7" r="1.3" fill="currentColor" stroke="none"/><path d="M9 7h10"/><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><path d="M9 12h10"/><circle cx="5" cy="17" r="1.3" fill="currentColor" stroke="none"/><path d="M9 17h10"/></svg></span>Feed</button>
   <button id="mb-board"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>Awards</button>
   <button id="mb-settings"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M21.4 12h-3M5.6 12h-3M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1M18.6 18.6l-2.1-2.1M7.5 7.5 5.4 5.4"/></svg></span>Settings</button>
@@ -2643,6 +2687,24 @@
   <div class="fr-tabs" id="fr-tabs">
     <button id="frt-friends" class="on">👥 Friends</button>
     <button id="frt-community">🌍 Community</button>
+    <button id="frt-chat">💬 Chat</button>
+  </div>
+  <div id="fr-pane-chat">
+    <div id="chat-home">
+      <div class="fr-sub">Your conversations · friends only</div>
+      <div id="chat-convos"><div class="fr-note">Sign in to chat with friends.</div></div>
+    </div>
+    <div id="chat-thread">
+      <div class="chat-head">
+        <button id="chat-back" title="Back to conversations">‹</button>
+        <span id="chat-with">@friend</span>
+      </div>
+      <div id="chat-msgs"></div>
+      <div class="chat-inputbar">
+        <textarea id="chat-text" rows="1" maxlength="1000" placeholder="Message…"></textarea>
+        <button id="chat-send" title="Send">➤</button>
+      </div>
+    </div>
   </div>
   <div id="fr-pane-friends">
     <div id="fr-requests"></div>
@@ -2777,7 +2839,7 @@
 </script>
 
 <script>
-const BUILD = 'v194';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v195';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7634,7 +7696,7 @@ function startSocial(user){
     renderRequests();
   }, err=>console.warn('requests sub',err));
   loadAllUsers();
-  startPresence(); shareLocation(); startPings(user.uid); startFeedWatch();
+  startPresence(); shareLocation(); startPings(user.uid); startFeedWatch(); startChatWatch();
   setTimeout(logMyLogin, 2500);            // record this session start (only if admin login-notify is on)
   if(friendsTick) clearInterval(friendsTick);
   friendsTick=setInterval(evalFriendStatus, 6000);   // catch offline (time-based) transitions
@@ -7649,7 +7711,7 @@ function stopSocial(){
   Object.values(friendProfileUnsubs).forEach(u=>{ try{u();}catch(e){} }); friendProfileUnsubs={};
   friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear();
   unlockQueue=[]; unlockBusy=false;   // the celebrated-set is stored per account, not reset here
-  stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
+  stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); stopChatWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
   rebuildSeenSet();   // clears the seen set on sign-out
   if(seenOnly){ seenOnly=false; const st=$('seen-toggle'); if(st) st.classList.remove('on'); }
   if(friendsTick){ clearInterval(friendsTick); friendsTick=null; }
@@ -9454,6 +9516,141 @@ function startPings(uid){
   }, err=>console.warn('pings', err));
 }
 
+/* ================= Friend chat =================================================
+   1:1 threads at chats/{chatId}/messages, chatId = the two uids sorted. One list listener
+   drives the conversation previews, the nav badge and incoming pop-ups; opening a thread
+   attaches a messages listener and marks it read locally (per-device, in localStorage). */
+let unsubChatList=null, unsubChatThread=null, chatOpenUid=null, chatList=[], chatListReady=false, chatReadMap=null;
+function loadChatRead(){ if(!chatReadMap){ try{ chatReadMap=JSON.parse(localStorage.getItem('skywatch_chatread')||'{}'); }catch(e){ chatReadMap={}; } } return chatReadMap; }
+function chatReadTs(cid){ return loadChatRead()[cid]||0; }
+function markChatRead(cid){ const m=loadChatRead(); m[cid]=Date.now(); try{ localStorage.setItem('skywatch_chatread', JSON.stringify(m)); }catch(e){} }
+function chatIdFor(otherUid){ return [currentUser.uid, otherUid].sort().join('__'); }
+function chatTime(ts){ if(!ts) return ''; return new Date(ts).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); }
+function chatUnread(){ return !!currentUser && chatList.some(c=> c.lastFrom && c.lastFrom!==currentUser.uid && (c.lastTs||0)>chatReadTs(c.chatId)); }
+function updateChatBadge(){ const b=$('mb-chatbadge'); if(b) b.classList.toggle('show', chatUnread()); }
+function chatViewingUid(uid){
+  const f=$('friends');
+  return chatOpenUid===uid && appIsVisible() && f && f.classList.contains('open') && f.classList.contains('tab-chat')
+    && $('chat-thread') && $('chat-thread').style.display!=='none';
+}
+// Friends panel tab switch — Friends / Community / Chat (generalises the old two-pane toggle).
+function frTab(name){
+  const f=$('friends'); if(!f) return;
+  f.classList.toggle('tab-add', name==='community');
+  f.classList.toggle('tab-chat', name==='chat');
+  [['friends','frt-friends'],['community','frt-community'],['chat','frt-chat']].forEach(([n,id])=>{ const b=$(id); if(b) b.classList.toggle('on', n===name); });
+  const t=$('fr-title'); if(t) t.textContent = name==='community'?'Community':name==='chat'?'Chat':'Friends';
+  if(name==='community'){ renderDirectory(); if(currentUser && !allUsers.length) loadAllUsers(); }
+  else if(name==='chat'){ renderChatHome(); updateChatBadge(); }
+}
+function showAdd(on){ frTab(on?'community':'friends'); }   // back-compat alias
+function startChatWatch(){
+  if(!currentUser || !window.fb) return;
+  if(unsubChatList){ unsubChatList(); unsubChatList=null; }
+  chatListReady=false;
+  const {db, collection, onSnapshot, query, where, limit}=window.fb;
+  unsubChatList=onSnapshot(query(collection(db,'chats'), where('members','array-contains',currentUser.uid), limit(60)), snap=>{
+    chatList = snap.docs.map(d=>{ const c=d.data()||{}; const other=(c.members||[]).find(u=>u!==currentUser.uid);
+        const f=friends.find(x=>x.uid===other);
+        return { chatId:d.id, otherUid:other, otherName:(f&&f.username)||'', lastFrom:c.lastFrom||'', lastText:c.lastText||'', lastTs:c.lastTs||0 }; })
+      .filter(c=>c.otherUid).sort((a,b)=>b.lastTs-a.lastTs);
+    snap.docChanges().forEach(ch=>{ if(ch.type==='removed') return; const c=ch.doc.data()||{};
+      const other=(c.members||[]).find(u=>u!==currentUser.uid);
+      if(!other || !c.lastFrom || c.lastFrom===currentUser.uid) return;
+      if((c.lastTs||0) <= chatReadTs(ch.doc.id)) return;                 // already seen on this device
+      if(!chatListReady) return;                                          // skip the initial backlog
+      if(chatViewingUid(other)){ markChatRead(ch.doc.id); }              // in-focus → the thread listener shows it
+      else {
+        const f=friends.find(x=>x.uid===other);
+        showPremiumCard({ hue:'150,200,255', icon:'💬', kicker:'Message', name:'@'+((f&&f.username)||'friend'),
+          desc:(c.lastText||'').slice(0,140), ms:6000, top:true,
+          onTap:()=>openChatWith(other, (f&&f.username)||'friend') });
+      }
+    });
+    chatListReady=true;
+    if($('friends') && $('friends').classList.contains('tab-chat') && $('chat-thread') && $('chat-thread').style.display==='none') renderChatHome();
+    updateChatBadge();
+  }, err=>console.warn('chat list', err));
+}
+function stopChatWatch(){
+  if(unsubChatList){ unsubChatList(); unsubChatList=null; }
+  if(unsubChatThread){ unsubChatThread(); unsubChatThread=null; }
+  chatList=[]; chatOpenUid=null; chatListReady=false; updateChatBadge();
+}
+function renderChatHome(){
+  const home=$('chat-home'), thread=$('chat-thread'); if(home) home.style.display='flex'; if(thread) thread.style.display='none';
+  chatOpenUid=null;
+  const el=$('chat-convos'); if(!el) return;
+  if(!currentUser){ el.innerHTML='<div class="fr-note">Sign in to chat with friends.</div>'; return; }
+  if(!friends.length){ el.innerHTML='<div class="fr-note">Add a friend first — chat is friends-only.</div>'; return; }
+  const byUid={}; chatList.forEach(c=>byUid[c.otherUid]=c);
+  const rows=friends.slice().sort((a,b)=>{ const ca=byUid[a.uid], cb=byUid[b.uid]; return (cb?cb.lastTs:0)-(ca?ca.lastTs:0); });
+  el.innerHTML=rows.map(f=>{
+    const c=byUid[f.uid];
+    const unread = c && c.lastFrom!==currentUser.uid && (c.lastTs||0)>chatReadTs(chatIdFor(f.uid));
+    const prev = c ? ((c.lastFrom===currentUser.uid?'You: ':'')+esc(c.lastText||'')) : 'Say hello 👋';
+    return '<button class="chat-convo'+(unread?' unread':'')+'" data-uid="'+f.uid+'" data-un="'+esc(f.username)+'">'+
+      '<span class="fr-av">'+avatarHTML(f, f.username)+'</span>'+
+      '<span class="chat-cv-body"><span class="chat-cv-nm">@'+esc(f.username)+(unread?' <i class="chat-dot"></i>':'')+'</span>'+
+      '<span class="chat-cv-prev">'+prev+'</span></span></button>';
+  }).join('');
+  el.querySelectorAll('.chat-convo').forEach(b=>b.onclick=()=>openChatWith(b.dataset.uid, b.dataset.un));
+}
+function openChatWith(uid, name){
+  if(!currentUser || !window.fb || !uid) return;
+  const f=$('friends');
+  if(f && !f.classList.contains('open')){ if(isMobile()) openSheet('friends'); else f.classList.add('open'); }
+  frTab('chat');
+  chatOpenUid=uid;
+  const home=$('chat-home'), thread=$('chat-thread');
+  if(home) home.style.display='none'; if(thread) thread.style.display='flex';
+  const wl=$('chat-with'); if(wl) wl.textContent='@'+(name||'friend');
+  const box=$('chat-msgs'); if(box) box.innerHTML='<div class="fr-note">Loading…</div>';
+  const cid=chatIdFor(uid);
+  markChatRead(cid); updateChatBadge();
+  if(unsubChatThread){ unsubChatThread(); unsubChatThread=null; }
+  const {db, collection, onSnapshot, query, orderBy, limit}=window.fb;
+  unsubChatThread=onSnapshot(query(collection(db,'chats',cid,'messages'), orderBy('ts','asc'), limit(300)), snap=>{
+    renderChatMsgs(snap.docs.map(d=>d.data()));
+    if(chatViewingUid(uid)){ markChatRead(cid); updateChatBadge(); }
+  }, err=>{ console.warn('chat thread', err); const b=$('chat-msgs'); if(b) b.innerHTML='<div class="fr-note">Couldn’t load messages.</div>'; });
+  setTimeout(()=>{ const ta=$('chat-text'); if(ta) ta.focus(); }, 60);
+}
+function renderChatMsgs(msgs){
+  const el=$('chat-msgs'); if(!el) return;
+  el.innerHTML = (msgs && msgs.length) ? msgs.map(m=>{
+    const mine=m.from===currentUser.uid;
+    return '<div class="chat-msg '+(mine?'me':'them')+'"><span class="chat-bub">'+esc(m.text||'')+'</span>'+
+      '<span class="chat-t">'+chatTime(m.ts)+'</span></div>';
+  }).join('') : '<div class="fr-note">No messages yet — say hi 👋</div>';
+  el.scrollTop=el.scrollHeight;
+}
+async function sendChatMessage(){
+  const ta=$('chat-text'); if(!ta) return;
+  const text=(ta.value||'').trim();
+  if(!text || !chatOpenUid || !currentUser || !window.fb) return;
+  const uid=chatOpenUid, cid=chatIdFor(uid);
+  ta.value=''; chatAutoGrow();
+  try{
+    const {db, collection, addDoc, doc, setDoc}=window.fb;
+    const now=Date.now();
+    // The chat doc must exist before the message write — the message rule reads its members.
+    await setDoc(doc(db,'chats',cid), { members:[currentUser.uid, uid].sort(), lastFrom:currentUser.uid, lastText:text.slice(0,500), lastTs:now }, {merge:true});
+    await addDoc(collection(db,'chats',cid,'messages'), { from:currentUser.uid, text:text.slice(0,1000), ts:now });
+    markChatRead(cid);
+    try{ SFX.tap(); }catch(e){}
+  }catch(e){ console.error('chat send', e); showErr('Could not send: '+(e.code||e.message||e)); ta.value=text; chatAutoGrow(); }
+}
+function chatAutoGrow(){ const ta=$('chat-text'); if(!ta) return; ta.style.height='auto'; ta.style.height=Math.min(120, ta.scrollHeight)+'px'; }
+function initChat(){
+  const send=$('chat-send'), ta=$('chat-text'), back=$('chat-back');
+  if(send) send.onclick=sendChatMessage;
+  if(back) back.onclick=renderChatHome;
+  if(ta){ ta.oninput=chatAutoGrow;
+    ta.onkeydown=e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendChatMessage(); } }; }
+}
+initChat();
+
 /* ---------- Custom friend message (in-app only, online friends) ----------
    Rides the same profiles/{uid}/pings channel as a nudge, tagged kind:'msg' so the
    recipient shows it in-app and never as a system push. The compose button only appears
@@ -9722,7 +9919,7 @@ function renderFriends(){
   el.querySelectorAll('.fr-locate').forEach(b=>b.onclick=e=>{ e.stopPropagation(); locateFriend(b.dataset.uid); });
   el.querySelectorAll('.fr-del').forEach(b=>b.onclick=e=>{ e.stopPropagation(); removeFriend(b.dataset.uid,b.dataset.un); });
   el.querySelectorAll('.fr-ping').forEach(b=>b.onclick=e=>{ e.stopPropagation(); pingFriend(b.dataset.uid,b.dataset.un); });
-  el.querySelectorAll('.fr-msg').forEach(b=>b.onclick=e=>{ e.stopPropagation(); openMsgCompose(b.dataset.uid,b.dataset.un); });
+  el.querySelectorAll('.fr-msg').forEach(b=>b.onclick=e=>{ e.stopPropagation(); openChatWith(b.dataset.uid,b.dataset.un); });
   el.querySelectorAll('.fr-item[data-open]').forEach(row=>row.onclick=()=>{
     const f=friends.find(x=>x.uid===row.dataset.open); if(f) openFriendProfile(f);
   });
@@ -9909,18 +10106,11 @@ function initFriendsUI(){
   const rf=$('fr-refresh');
   if(rf) rf.onclick=async ()=>{ if(!currentUser){ showErr('Sign in to load users.'); return; }
     rf.classList.add('spin'); await loadAllUsers(); rf.classList.remove('spin'); showToast('User list refreshed'); };
-  // Friends panel: the "add friends" drill-in
-  const showAdd=(on)=>{
-    $('friends').classList.toggle('tab-add', on);
-    const ft=$('frt-friends'), ct=$('frt-community');
-    if(ft) ft.classList.toggle('on', !on);
-    if(ct) ct.classList.toggle('on', on);
-    const t=$('fr-title'); if(t) t.textContent = on ? 'Community' : 'Friends';
-    if(on){ renderDirectory(); if(currentUser && !allUsers.length) loadAllUsers(); }
-  };
-  if($('frt-friends'))   $('frt-friends').onclick=()=>showAdd(false);
-  if($('frt-community')) $('frt-community').onclick=()=>showAdd(true);
-  if($('fr-add')) $('fr-add').onclick=()=>showAdd(true);
+  // Friends panel tabs: Friends / Community / Chat (frTab is defined globally).
+  if($('frt-friends'))   $('frt-friends').onclick=()=>frTab('friends');
+  if($('frt-community')) $('frt-community').onclick=()=>frTab('community');
+  if($('frt-chat'))      $('frt-chat').onclick=()=>frTab('chat');
+  if($('fr-add')) $('fr-add').onclick=()=>frTab('community');
   // Feed tabs: everyone (default) / friends / mine
   const feedTab=(scope)=>{ feedScope=scope;
     ['all','friends','mine'].forEach(t=>{ const b=$('fdt-'+t); if(b) b.classList.toggle('on', t===scope); });
