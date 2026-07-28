@@ -1,5 +1,5 @@
 /* SkyWatch service worker — app-shell caching + offline fallback */
-const VERSION = 'skywatch-v208';
+const VERSION = 'skywatch-v209';
 const SHELL = [
   './',
   './index.html',
@@ -101,6 +101,18 @@ self.addEventListener('fetch', (e) => {
       fetch(req, { cache: 'no-cache' })
         .catch(() => fetch(req))
         .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Shared TLE snapshots refresh a few times a day: prefer the network so clients pick up new
+  // elements, but fall back to the last cached copy when offline.
+  if (url.origin === self.location.origin && url.pathname.includes('/data/tle/')) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        if (res && res.ok) caches.open(VERSION).then((c) => c.put(req, res.clone()));
+        return res;
+      }).catch(() => caches.match(req))
     );
     return;
   }
