@@ -1323,6 +1323,25 @@
     font-size:24px;font-weight:800;color:#fff;letter-spacing:.5px}
   #ar-sub{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 44px);text-align:center;
     font-size:12px;color:var(--muted);padding:0 20px}
+  /* Big directional arrows for single-target tracking — point the way to turn */
+  #ar-arrows{position:absolute;inset:0;z-index:9;pointer-events:none;display:none}
+  #ar-arrows.show{display:block}
+  .ar-arr{position:absolute;font-size:62px;line-height:1;color:#5ad1ff;opacity:0;transition:opacity .18s;
+    filter:drop-shadow(0 0 12px rgba(90,209,255,.85));text-shadow:0 2px 10px rgba(0,0,0,.7)}
+  .ar-arr.on{opacity:.95}
+  .ar-arr.up{top:calc(env(safe-area-inset-top) + 64px);left:50%;transform:translateX(-50%)}
+  .ar-arr.down{bottom:calc(env(safe-area-inset-bottom) + 118px);left:50%;transform:translateX(-50%)}
+  .ar-arr.left{left:14px;top:50%;transform:translateY(-50%)}
+  .ar-arr.right{right:14px;top:50%;transform:translateY(-50%)}
+  .ar-arr.on.up{animation:ar-bob-up 1s ease-in-out infinite}
+  .ar-arr.on.down{animation:ar-bob-down 1s ease-in-out infinite}
+  .ar-arr.on.left{animation:ar-bob-left 1s ease-in-out infinite}
+  .ar-arr.on.right{animation:ar-bob-right 1s ease-in-out infinite}
+  @keyframes ar-bob-up{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-12px)}}
+  @keyframes ar-bob-down{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(12px)}}
+  @keyframes ar-bob-left{0%,100%{transform:translateY(-50%) translateX(0)}50%{transform:translateY(-50%) translateX(-12px)}}
+  @keyframes ar-bob-right{0%,100%{transform:translateY(-50%) translateX(0)}50%{transform:translateY(-50%) translateX(12px)}}
+  @media (prefers-reduced-motion: reduce){ .ar-arr.on{animation:none} }
   /* Take-the-tour button + onboarding */
   #tourbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
     padding:11px;border-radius:11px;border:1px solid var(--border);background:rgba(120,160,255,.08);
@@ -2139,6 +2158,10 @@
   <div id="ar-title">—</div>
   <div id="ar-reticle"></div>
   <div id="ar-target"><div class="ar-dot"></div></div>
+  <div id="ar-arrows">
+    <span class="ar-arr up">▲</span><span class="ar-arr down">▼</span>
+    <span class="ar-arr left">◀</span><span class="ar-arr right">▶</span>
+  </div>
   <div id="ar-guide">—</div>
   <div id="ar-sub">—</div>
 </div>
@@ -2851,7 +2874,7 @@
 </script>
 
 <script>
-const BUILD = 'v200';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v202';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -5643,6 +5666,17 @@ function arSmoothHeading(prev, next){
   const k = ad<6 ? 0.06 : ad<20 ? 0.18 : 0.5;
   return (prev + d*k + 360) % 360;
 }
+// Big edge arrows that point which way to turn toward the tracked satellite.
+function arHideArrows(){ const b=$('ar-arrows'); if(b) b.classList.remove('show'); }
+function arSetArrows(dAz, dEl){
+  const box=$('ar-arrows'); if(!box) return;
+  if(arOnTarget){ box.classList.remove('show'); return; }   // on target → no arrows, just the reticle
+  box.classList.add('show');
+  const TH=6;                                                // degrees of slop before an arrow lights up
+  const set=(cls, active)=>{ const el=box.querySelector('.ar-arr.'+cls); if(el) el.classList.toggle('on', !!active); };
+  set('right', dAz>TH); set('left', dAz<-TH);                // + azimuth delta → turn right
+  set('up', dEl>TH);    set('down', dEl<-TH);                // + elevation delta → tilt up
+}
 /* ---------- Topbar compass ----------
    Shares the AR sky-finder's orientation plumbing, but runs independently so the
    heading is there whenever you need to line up a pass bearing. */
@@ -5721,9 +5755,9 @@ function arTick(){
         arAz=la.azimuth*R2D; arEl=la.elevation*R2D; } else { arAz=null; arEl=null; }
     }
     const az=arAz, el=arEl;
-    if(az==null){ guide.textContent='Locating…'; tgt.style.opacity=0; }
-    else if(el < -1){ guide.textContent='Below the horizon'; sub.textContent='Not visible from your location right now.'; tgt.style.opacity=0; arOnTarget=false; }
-    else if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; }
+    if(az==null){ guide.textContent='Locating…'; tgt.style.opacity=0; arHideArrows(); }
+    else if(el < -1){ guide.textContent='Below the horizon'; sub.textContent='Not visible from your location right now.'; tgt.style.opacity=0; arOnTarget=false; arHideArrows(); }
+    else if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; arHideArrows(); }
     else {
       const dAz=((az-arHeadS+540)%360)-180;                  // + → target is to your right
       const dEl=el-(arPitchS==null?0:arPitchS);              // + → target is above where you point
@@ -5733,6 +5767,7 @@ function arTick(){
       const dist=Math.hypot(dAz,dEl);                        // hysteresis: lock <7°, release >11°
       if(dist<7) arOnTarget=true; else if(dist>11) arOnTarget=false;
       tgt.classList.toggle('near', arOnTarget);
+      arSetArrows(dAz, dEl);                                 // big edge arrows point the way to turn
       const hor=Math.abs(dAz)<8?'':(dAz>0?'right':'left'), ver=Math.abs(dEl)<8?'':(dEl>0?'up':'down');
       const dirs=[ver,hor].filter(Boolean).join('-');
       guide.textContent = arOnTarget ? '🎯 On target!' : (dirs ? 'Look '+dirs : 'Almost — hold steady');
@@ -5740,7 +5775,7 @@ function arTick(){
     }
   } else {
     // Overlay mode: no single target — just show what's up and where you're facing.
-    tgt.style.opacity=0;
+    tgt.style.opacity=0; arHideArrows();
     const up=arSky.reduce((n,o)=>n+(o.el>=0?1:0),0);
     if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; }
     else { guide.textContent=up+' overhead'; sub.textContent='Facing '+azCompass(arHeadS)+' '+Math.round(arHeadS)+'° · dots are satellites above you'; }
@@ -8078,9 +8113,29 @@ async function commitSeen(list, days){
     {badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score,
      listed:prefs.listed!==false, ranked:prefs.ranked!==false}, {merge:true}); }catch(e){} }
 }
+// Highest elevation the object reached from the observer across a short window around the
+// claimed time (a 10-min lookback covers "I saw it a few minutes ago, logging it now").
+function viewableElevation(s, ts){
+  if(!observer || !s || !s.satrec) return null;
+  const base=ts||Date.now(); let best=-999;
+  for(let dt=-10; dt<=2; dt++){
+    try{ const d=new Date(base+dt*60000), pv=satellite.propagate(s.satrec, d);
+      if(pv&&pv.position){ const la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, satellite.gstime(d)));
+        const e=la.elevation*R2D; if(e>best) best=e; } }catch(e){}
+  }
+  return best<=-900 ? null : best;
+}
 async function logSighting(s, ts){
   if(!currentUser||!window.fb){ showErr('Sign in to log sightings (account icon, top-right).'); return; }
   if(!myProfile||!myProfile.username){ showErr('Choose a username first (Friends tab).'); return; }
+  // Honesty check: you can only log an object that was actually above your local horizon.
+  if(!observer){ showErr('📍 Set your location first (⌖ button) — sightings are verified against where you were.'); return; }
+  const maxEl=viewableElevation(s, ts);
+  if(maxEl!=null && maxEl < -1){
+    showErr('🚫 Can’t log '+shortName(s.name)+' — it was below your horizon at that time (peaked '+Math.round(maxEl)+
+      '° from your location), so it wasn’t viewable from where you are. You can only log objects that crossed your local sky.');
+    return;
+  }
   const list=Array.isArray(myProfile.seen)?myProfile.seen.map(e=>Object.assign({},e)):[];
   const i=list.findIndex(x=>x.id===s.id); let n;
   let dir=azCompass8(s.azimuth);                    // for the Compass Rose award
@@ -8107,6 +8162,18 @@ async function logSighting(s, ts){
 async function logLaunchSighting(l, how){
   if(!currentUser||!window.fb){ showErr('Sign in to log sightings.'); return; }
   if(!myProfile||!myProfile.username){ showErr('Choose a username first (Friends tab).'); return; }
+  // Honesty check: a launch is only loggable from within viewing range of the pad/ascent.
+  if(!observer){ showErr('📍 Set your location first (⌖ button) — launch sightings are checked against how far you were from the pad.'); return; }
+  if(typeof l.lat==='number' && typeof l.lng==='number'){
+    const R=6371, tr=Math.PI/180, dLa=(l.lat-observer.lat)*tr, dLo=(l.lng-observer.lng)*tr;
+    const a=Math.sin(dLa/2)**2 + Math.cos(observer.lat*tr)*Math.cos(l.lat*tr)*Math.sin(dLo/2)**2;
+    const km=2*R*Math.asin(Math.min(1,Math.sqrt(a)));
+    if(km > 600){
+      showErr('🚫 Can’t log this — the '+(l.rocket||'launch')+' lifted off ~'+Math.round(km).toLocaleString()+
+        ' km from you, too far to see from the ground. Launch sightings must be from within viewing range of the pad.');
+      return;
+    }
+  }
   const list=Array.isArray(myProfile.seen)?myProfile.seen.map(e=>Object.assign({},e)):[];
   const i=list.findIndex(x=>x.id===l.id), ts=Date.now(); let n;
   if(i>=0){ list[i].count=(list[i].count||1)+1; list[i].last=ts; list[i].how=how; n=list[i].count; }
