@@ -906,6 +906,27 @@
     background:rgba(120,160,255,.05)}
   .ce5-stat b{display:block;font-size:19px;color:var(--accent);font-variant-numeric:tabular-nums}
   .ce5-stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .ce5-mk{margin-top:8px}
+  .ce5-chk.on{border-color:rgba(var(--neon-c),.7)}
+  .ce5-hits{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+  .ce5-hit{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;
+    padding:11px 13px;border-radius:12px;border:1px solid var(--border);background:rgba(255,214,102,.06);
+    color:var(--text);font-size:13px;font-weight:600;cursor:pointer;text-align:left}
+  .ce5-hit:hover{border-color:rgba(255,214,102,.55)}
+  .ce5-hit-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ce5-hit-m{flex:none;font-size:11px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+  #ce5-confirm{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + var(--bar-h,64px) + 12px);
+    transform:translate(-50%,140%);z-index:130;width:min(460px,calc(100vw - 24px));
+    padding:13px 15px;border-radius:16px;border:1px solid rgba(255,214,102,.5);
+    background:rgba(20,22,30,.96);box-shadow:0 10px 34px rgba(0,0,0,.5);backdrop-filter:blur(8px);
+    opacity:0;pointer-events:none;transition:transform .28s cubic-bezier(.2,.9,.3,1),opacity .28s}
+  #ce5-confirm.show{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+  .ce5c-t{font-size:14px;font-weight:700;color:#ffd666}
+  .ce5c-q{font-size:12px;color:var(--muted);margin:2px 0 10px}
+  .ce5c-btns{display:flex;gap:8px}
+  .ce5c-btns button{flex:1;padding:11px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer;border:1px solid var(--border)}
+  .ce5c-yes{background:rgba(120,220,140,.16);border-color:rgba(120,220,140,.5)!important;color:#9fe6b0}
+  .ce5c-no{background:transparent;color:var(--muted)}
   /* Red night-vision mode — a multiply veil strips blue/green so dark adaptation holds */
   #nightveil{position:fixed;inset:0;z-index:195;pointer-events:none;display:none;
     background:#ff2b12;mix-blend-mode:multiply}
@@ -1296,7 +1317,7 @@
     background:rgba(90,209,255,.12);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer}
   #d-ar:hover{background:rgba(90,209,255,.22)}
   #detail.launch #d-ar{display:none}
-  #arview{position:fixed;inset:0;z-index:95;display:none;
+  #arview{position:fixed;inset:0;z-index:95;display:none;touch-action:none;
     background:radial-gradient(120% 90% at 50% 12%,#0b1730,#05070f 72%)}
   #arview.show{display:block}
   #ar-cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;
@@ -1319,10 +1340,28 @@
     background:radial-gradient(circle,#ffd34d,rgba(255,211,77,.15));box-shadow:0 0 16px #ffd34d;
     animation:dmore 1.2s ease-in-out infinite}
   #ar-target.near .ar-dot{background:radial-gradient(circle,#57e08a,rgba(87,224,138,.15));box-shadow:0 0 18px #57e08a}
-  #ar-guide{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 72px);text-align:center;
+  #ar-guide{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 108px);text-align:center;
     font-size:24px;font-weight:800;color:#fff;letter-spacing:.5px}
-  #ar-sub{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 44px);text-align:center;
+  #ar-sub{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 80px);text-align:center;
     font-size:12px;color:var(--muted);padding:0 20px}
+  /* Point-and-log: capture what you're aiming the phone at */
+  #ar-capture{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 18px);transform:translateX(-50%);
+    z-index:11;pointer-events:auto;display:inline-flex;align-items:center;gap:8px;
+    padding:13px 22px;border-radius:26px;border:1px solid rgba(255,214,102,.6);
+    background:rgba(255,214,102,.16);color:#ffe08a;font-size:14px;font-weight:700;cursor:pointer;
+    box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  #ar-capbar{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom) + 76px);transform:translateX(-50%);
+    z-index:12;pointer-events:auto;width:min(440px,calc(100vw - 24px));display:none;
+    padding:12px 14px;border-radius:16px;border:1px solid rgba(255,214,102,.5);
+    background:rgba(12,14,22,.97);box-shadow:0 10px 30px rgba(0,0,0,.55)}
+  #ar-capbar.show{display:block}
+  .ar-capt{font-size:14px;font-weight:700;color:#ffe08a}
+  .ar-capq{font-size:12px;color:var(--muted);margin:2px 0 10px}
+  .ar-capbtns{display:flex;gap:7px}
+  .ar-capbtns button{flex:1;padding:10px 6px;border-radius:11px;font-size:12.5px;font-weight:700;cursor:pointer;
+    border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text)}
+  .ar-capbtns .ar-cap-yes{background:rgba(120,220,140,.16);border-color:rgba(120,220,140,.5)!important;color:#9fe6b0}
+  .ar-capbtns .ar-cap-no{color:var(--muted)}
   /* Big directional arrows for single-target tracking — point the way to turn */
   #ar-arrows{position:absolute;inset:0;z-index:9;pointer-events:none;display:none}
   #ar-arrows.show{display:block}
@@ -1330,7 +1369,7 @@
     filter:drop-shadow(0 0 12px rgba(90,209,255,.85));text-shadow:0 2px 10px rgba(0,0,0,.7)}
   .ar-arr.on{opacity:.95}
   .ar-arr.up{top:calc(env(safe-area-inset-top) + 64px);left:50%;transform:translateX(-50%)}
-  .ar-arr.down{bottom:calc(env(safe-area-inset-bottom) + 118px);left:50%;transform:translateX(-50%)}
+  .ar-arr.down{bottom:calc(env(safe-area-inset-bottom) + 172px);left:50%;transform:translateX(-50%)}
   .ar-arr.left{left:14px;top:50%;transform:translateY(-50%)}
   .ar-arr.right{right:14px;top:50%;transform:translateY(-50%)}
   .ar-arr.on.up{animation:ar-bob-up 1s ease-in-out infinite}
@@ -2164,6 +2203,8 @@
   </div>
   <div id="ar-guide">—</div>
   <div id="ar-sub">—</div>
+  <div id="ar-capbar"></div>
+  <button id="ar-capture">📍 Log what I'm pointing at</button>
 </div>
 
 <div id="onboard">
@@ -2273,6 +2314,17 @@
     <div id="uap-close" aria-label="Close">✕</div>
     <div class="uap-title">Log an unidentified sighting</div>
     <div id="uap-ctx" class="uap-ctx"></div>
+    <div class="idf-lbl">Which direction</div>
+    <div class="idf-chips uap-g" data-k="dir">
+      <button data-v="N">N</button><button data-v="NE">NE</button><button data-v="E">E</button><button data-v="SE">SE</button>
+      <button data-v="S">S</button><button data-v="SW">SW</button><button data-v="W">W</button><button data-v="NW">NW</button>
+      <button data-v="overhead">Overhead</button>
+    </div>
+    <div class="idf-lbl">How high</div>
+    <div class="idf-chips uap-g" data-k="height">
+      <button data-v="low (near horizon)">Low</button><button data-v="mid sky">Mid</button>
+      <button data-v="high">High</button><button data-v="straight up">Overhead</button>
+    </div>
     <div class="idf-lbl">How long did it last</div>
     <div class="idf-chips uap-g" data-k="dur">
       <button data-v="under 5 seconds">&lt;5s</button><button data-v="5–30 seconds">5–30s</button>
@@ -2874,7 +2926,7 @@
 </script>
 
 <script>
-const BUILD = 'v203';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v206';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4081,6 +4133,16 @@ function orbitMinutes(sat){
     if(isFinite(rpd) && rpd>0.5) return Math.min(1600, Math.max(45, 1440/rpd)); }catch(e){}
   return 100;
 }
+// A one-off highlighted ground track for a CE5 mark: where an object was around the moment
+// you saw it, drawn centred on the mark's timestamp (not "now") so it shows the real pass.
+let ce5PreviewPath=null;   // { sat, ts } or null
+function ce5PreviewPathData(){
+  if(!ce5PreviewPath || !ce5PreviewPath.sat || !ce5PreviewPath.sat.satrec) return [];
+  const s=ce5PreviewPath.sat, per=orbitMinutes(s), step=per>240?4:1;
+  const centreMin=(ce5PreviewPath.ts - simNow())/60000, half=Math.round(per/2);
+  const pts=satTrackPoints(s, Math.round(centreMin-half), Math.round(centreMin+half), null, step);
+  return pts.length>1 ? [{ points:pts, color:['rgba(255,214,102,.95)','rgba(255,214,102,0)'] }] : [];
+}
 // Paths only — cheap enough to run on every selection.
 function updateOrbitPaths(){
   if(typeof world==='undefined' || !world) return;
@@ -4096,6 +4158,7 @@ function updateOrbitPaths(){
   }
   if(!isPhotoreal()){ const term=terminatorPath();
     if(term.length>1) paths.push({ points: term, color:['rgba(130,190,255,.5)','rgba(130,190,255,.5)'] }); }
+  for(const p of ce5PreviewPathData()) paths.push(p);
   world.pathsData(paths);
 }
 function updateIssOrbit(){
@@ -4114,6 +4177,7 @@ function updateIssOrbit(){
   }
   if(!isPhotoreal()){ const term = terminatorPath();   // day/night boundary line
     if(term.length>1) paths.push({ points: term, color:['rgba(130,190,255,.5)','rgba(130,190,255,.5)'] }); }
+  for(const p of ce5PreviewPathData()) paths.push(p);
   world.pathsData(paths);
   const polys=[];                 // flat night veil is replaced by the shader in Photoreal mode
   if(!isPhotoreal()){ const night=nightPolygon(); night.__night=true; polys.push(night); }
@@ -4831,7 +4895,6 @@ function renderLayerItems(id, box){
     : trains ? 'No low Starlink train flying right now.'
     : unknown ? 'No unidentified objects in the tracked set.'
     : 'Still loading…')+'</div>'; return; }
-  if(trains) awardTrainView();                        // opening the train list = you watched one
   if(decaying) items.sort((a,b)=>{ const A=orbitDetails(a), B=orbitDetails(b); return (A?A.per:9e9)-(B?B.per:9e9); });  // most urgent (lowest) first
   else if(observer) items.sort((a,b)=>(b.elevation??-99)-(a.elevation??-99));   // overhead first
   else items.sort((a,b)=>(a.name||'').localeCompare(b.name||''));               // else alphabetical
@@ -4870,6 +4933,8 @@ function collapseDetail(){ const d=$('detail'); if(d){ d.classList.add('collapse
   const lbl=$('d-more-lbl'); if(lbl) lbl.textContent = isMobile() ? 'Swipe up for details' : 'Click for details'; } }
 function selectSat(s){
   SFX.select(); Haptics.select();
+  // Selecting a different object clears any lingering CE5 mark-preview track + confirm bar.
+  if(ce5PreviewPath && ce5PreviewPath.sat!==s){ ce5PreviewPath=null; const cb=$('ce5-confirm'); if(cb) cb.classList.remove('show'); }
   selected=s; selectedLaunch=null;
   $('detail').classList.remove('launch'); collapseDetail();   // open showing just name + action buttons
   const act=$('d-actions'); if(act) act.style.display='';
@@ -4886,6 +4951,7 @@ function selectSat(s){
 }
 // Drop the current satellite/launch selection and its map highlight (the pulsing ring).
 function deselectSat(){ if(!selected && !selectedLaunch) return; selected=null; selectedLaunch=null;
+  if(ce5PreviewPath){ ce5PreviewPath=null; const cb=$('ce5-confirm'); if(cb) cb.classList.remove('show'); }
   if(!isMobile()){ const d=$('detail'); if(d) d.style.display='none'; }   // desktop: hide the floating card
   renderFrame(); updateOrbitPaths(); }
 function clearSelection(){
@@ -5567,6 +5633,8 @@ function startAR(target){
   startOrient(); if(!arRAF) arRAF=requestAnimationFrame(arTick);
 }
 function closeAR(){ arActive=false; $('arview').classList.remove('show'); stopOrient(); arStopCamera();
+  const bar=$('ar-capbar'); if(bar){ bar.classList.remove('show'); bar.innerHTML=''; }
+  const cap=$('ar-capture'); if(cap) cap.style.display='';
   if(arRAF){ cancelAnimationFrame(arRAF); arRAF=null; } }
 // Rear-camera background so satellites overlay the real sky. Graceful: denied → dark sky.
 async function arStartCamera(){
@@ -5797,27 +5865,86 @@ function arTick(){
   }
   arRAF=requestAnimationFrame(arTick);
 }
+// After a full-screen overlay closes on pointerup, the browser still fires a synthesized click
+// at those coordinates — which now lands on whatever is beneath (e.g. the account button in the
+// top-right, right under the ✕). Eat that one ghost click so it can't trigger anything.
+function swallowNextClick(){
+  const kill=e=>{ e.stopPropagation(); e.preventDefault(); cleanup(); };
+  const cleanup=()=>{ document.removeEventListener('click', kill, true); clearTimeout(tm); };
+  const tm=setTimeout(cleanup, 700);
+  document.addEventListener('click', kill, true);
+}
 function initAR(){
   const b=$('d-ar'); if(b) b.onclick=openAR;
   const sb=$('ar-sky-btn'); if(sb) sb.onclick=openArSky;
   const c=$('ar-close');
-  if(c){                                   // pointerup as well as click, so a tap always registers
-    const bye=e=>{ e.preventDefault(); e.stopPropagation(); closeAR(); };
-    c.addEventListener('click', bye);
-    c.addEventListener('pointerup', bye);
+  if(c){                                   // close on pointerup, then swallow the ghost click so it
+    const bye=e=>{ e.preventDefault(); e.stopPropagation(); closeAR(); swallowNextClick(); };
+    c.addEventListener('pointerup', bye);   // can't fall through to the account button underneath
+    c.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); });
   }
+  const cap=$('ar-capture');
+  if(cap){ const go=e=>{ e.preventDefault(); e.stopPropagation(); arCapture(); };
+    cap.addEventListener('pointerup', go);
+    cap.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); }); }
   window.addEventListener('resize', ()=>{ if(arActive) arSetupCanvas(); });   // orientation change too
   document.addEventListener('keydown', e=>{ if(arActive && e.key==='Escape') closeAR(); });
-  // Tap a satellite in the AR view → open its detail card (where you can log a sighting).
+  // Tap a satellite dot → open its detail card. A real tap detector (down+up within a small move
+  // and time) so a slight finger drift doesn't cancel it, and the tap never leaks to the map.
   const view=$('arview');
-  if(view) view.addEventListener('click', e=>{
-    if(!arActive) return;
-    if(e.target && e.target.closest && e.target.closest('#ar-close')) return;   // close button handles itself
-    const id=arHitTest(e.clientX, e.clientY);
-    if(!id) return;
-    const s=SATS.find(x=>x.id===id);
-    if(s){ SFX.tap(); Haptics.tap(); closeAR(); selectSat(s); }
-  });
+  if(view){
+    let sx=0, sy=0, st=0, tracking=false;
+    view.addEventListener('pointerdown', e=>{
+      if(!arActive){ tracking=false; return; }
+      if(e.target && e.target.closest && e.target.closest('#ar-close,#ar-capture,#ar-capbar')){ tracking=false; return; }
+      tracking=true; sx=e.clientX; sy=e.clientY; st=Date.now();
+    });
+    view.addEventListener('pointerup', e=>{
+      if(!arActive || !tracking) return; tracking=false;
+      if(Math.hypot(e.clientX-sx, e.clientY-sy)>14 || Date.now()-st>600) return;   // a drag, not a tap
+      const id=arHitTest(e.clientX, e.clientY);
+      if(!id) return;
+      const s=SATS.find(x=>x.id===id);
+      if(s){ SFX.tap(); Haptics.tap(); closeAR(); swallowNextClick(); selectSat(s); }
+    });
+  }
+}
+// Where the phone is pointing, in az/el degrees (smoothed if we have it, raw otherwise).
+function arAim(){
+  const az = arHeadS!=null ? arHeadS : arHeading;
+  const el = arPitchS!=null ? arPitchS : arPitch;
+  if(az==null || el==null || !isFinite(az) || !isFinite(el)) return null;
+  return { az:(az+360)%360, el };
+}
+// "Point at what you saw and log it." Ranks the on-screen candidates by angular distance from
+// your aim; a close one → confirm+log with its exact bearing, otherwise file a directional UAP.
+function arCapture(){
+  const aim=arAim();
+  if(!aim){ showErr('Point your phone at the sky first — waiting for the compass.'); return; }
+  let best=null, bestSep=999;
+  for(const o of arSky){ if(o.el<-1) continue;
+    const sep=angSep(o.az,o.el, aim.az,aim.el); if(sep<bestSep){ bestSep=sep; best=o; } }
+  if(best && bestSep<12) arShowCapConfirm(best, bestSep, aim);
+  else arLogUnidentified(aim);
+}
+function arShowCapConfirm(o, sep, aim){
+  const bar=$('ar-capbar'); if(!bar) return;
+  const cap=$('ar-capture'); if(cap) cap.style.display='none';
+  bar.innerHTML='<div class="ar-capt">'+esc(o.name)+'</div>'+
+    '<div class="ar-capq">'+Math.round(sep)+'° from where you’re pointing · '+azCompass(o.az)+' '+Math.round(o.az)+'°, alt '+Math.round(o.el)+'°</div>'+
+    '<div class="ar-capbtns"><button class="ar-cap-yes">✓ Log this</button>'+
+    '<button class="ar-cap-uap">👁 Not listed</button><button class="ar-cap-no">✗</button></div>';
+  bar.classList.add('show');
+  bar.querySelector('.ar-cap-yes').onclick=e=>{ e.stopPropagation(); const s=SATS.find(x=>x.id===o.id);
+    arHideCap(); if(s){ closeAR(); logSighting(s, Date.now(), {az:o.az, el:o.el}); } };
+  bar.querySelector('.ar-cap-uap').onclick=e=>{ e.stopPropagation(); arHideCap(); arLogUnidentified(aim); };
+  bar.querySelector('.ar-cap-no').onclick=e=>{ e.stopPropagation(); arHideCap(); };
+}
+function arHideCap(){ const bar=$('ar-capbar'); if(bar){ bar.classList.remove('show'); bar.innerHTML=''; }
+  const cap=$('ar-capture'); if(cap) cap.style.display=''; }
+function arLogUnidentified(aim){
+  closeAR();
+  openUapForm({ ts:Date.now(), rows:[], wantAz:Math.round(aim.az), wantAlt:Math.round(aim.el), skyText:'' });
 }
 
 /* ---------- Deep link from a clicked notification ---------- */
@@ -8150,7 +8277,7 @@ function viewableElevation(s, ts){
   }
   return best<=-900 ? null : best;
 }
-async function logSighting(s, ts){
+async function logSighting(s, ts, opts){
   if(!currentUser||!window.fb){ showErr('Sign in to log sightings (account icon, top-right).'); return; }
   if(!myProfile||!myProfile.username){ showErr('Choose a username first (Friends tab).'); return; }
   // Honesty check: you can only log an object that was actually above your local horizon.
@@ -8163,24 +8290,32 @@ async function logSighting(s, ts){
   }
   const list=Array.isArray(myProfile.seen)?myProfile.seen.map(e=>Object.assign({},e)):[];
   const i=list.findIndex(x=>x.id===s.id); let n;
-  let dir=azCompass8(s.azimuth);                    // for the Compass Rose award
-  if(!dir && observer && s.satrec){                 // the render worker doesn't fill azimuth — compute it fresh
-    try{ const dd=new Date(simNow()), pv=satellite.propagate(s.satrec, dd);
+  // Which way it was, and how high — captured at the logged instant so it's on record and you
+  // don't have to remember later. Taken from opts if the caller already worked it out (e.g. a
+  // CE5 mark), else computed fresh at ts. dir also drives the Compass Rose award.
+  let dir='', el=null;
+  if(opts && (opts.az!=null || opts.el!=null)){
+    if(opts.az!=null) dir=azCompass8(opts.az);
+    if(opts.el!=null) el=Math.round(opts.el);
+  } else if(observer && s.satrec){                  // the render worker doesn't fill azimuth — compute it fresh
+    try{ const dd=new Date(ts||simNow()), pv=satellite.propagate(s.satrec, dd);
       if(pv&&pv.position){ const la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, satellite.gstime(dd)));
-        dir=azCompass8(la.azimuth*R2D); } }catch(e){}
+        dir=azCompass8(la.azimuth*R2D); el=Math.round(la.elevation*R2D); } }catch(e){}
   }
-  if(i>=0){ list[i].count=(list[i].count||1)+1; list[i].last=Math.max(list[i].last||list[i].ts||0, ts); if(dir) list[i].dir=dir; n=list[i].count; }
-  else { list.push({id:s.id, name:s.name, kind:'sat', group:s.group, oc:orbitClass(s), ts, last:ts, count:1, dir}); n=1; }
+  if(!dir) dir=azCompass8(s.azimuth);               // last resort: the live worker value
+  if(i>=0){ list[i].count=(list[i].count||1)+1; list[i].last=Math.max(list[i].last||list[i].ts||0, ts); if(dir) list[i].dir=dir; if(el!=null) list[i].el=el; n=list[i].count; }
+  else { list.push({id:s.id, name:s.name, kind:'sat', group:s.group, oc:orbitClass(s), ts, last:ts, count:1, dir, el}); n=1; }
   try{ await commitSeen(list, addSightDay(myProfile.sightDays, ts));
     if(ntPicked && ntPicked.id===s.id && (Date.now()-ntPicked.at)<NT_PICK_WINDOW){
       bumpStat('planned');
       if(ntPicked.superb) bumpStat('perfect');
       ntPicked=null;
     }
+    if(isStarlinkTrain(s)) awardTrainView();             // logged a low Starlink in train formation = you watched one
     SFX.success(); Haptics.sighting();
     showToast(n===1?('🏅 New badge: '+s.name):('👁 Sighting #'+n+' logged: '+s.name), true);
     const sid=newSightId();                              // unique per this sighting instance
-    pushSightLog({id:s.id, name:s.name, kind:'sat', ts, sid});
+    pushSightLog({id:s.id, name:s.name, kind:'sat', ts, sid, dir, el});
     postFeed({name:s.name, id:s.id, kind:'sat', n, sid});     // every sighting posts
   }catch(e){ console.error(e); showErr('Could not save: '+(e.code||e.message||e)); }
 }
@@ -8839,7 +8974,6 @@ function awardTrainView(){ const st=(myProfile&&myProfile.stats)||{}; if(current
 function awardFirstChat(){ const st=(myProfile&&myProfile.stats)||{}; if(currentUser && (st.chat||0)<1) bumpStat('chat'); }
 async function shareTrain(tr){
   if(!tr) return;
-  awardTrainView();                                  // tapping the train banner = you watched one
   const url=appShareUrl();
   const text='🚂 A Starlink train (~'+tr.count+' satellites in a line) is visible tonight at '+
     fmtPassTime(tr.start)+' — look '+tr.az+', up to '+tr.peakEl+'°. Watch it with me on SkyWatch!';
@@ -9332,17 +9466,75 @@ function renderCe5Summary(rec){
          (x.starlink>0?' — including Starlink':'')+'. Anything you marked can be checked against them below.')
       : 'Nothing tracked was sunlit above you during that window — anything you saw was not a satellite in sunlight.')+'</div>';
   if(rec.marks.length){
-    h+='<div class="idf-lbl">Your marks</div>';
-    rec.marks.forEach((ts,i)=>{ h+='<button class="idf-uap ce5-chk" data-ts="'+ts+'">🔎 Check mark '+(i+1)+
-      ' · '+new Date(ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})+'</button>'; });
+    h+='<div class="idf-lbl">Your marks · tap one to see what was up</div>';
+    rec.marks.forEach((ts,i)=>{ h+='<div class="ce5-mk"><button class="idf-uap ce5-chk" data-i="'+i+'" data-ts="'+ts+'">🔎 Mark '+(i+1)+
+      ' · '+new Date(ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit',second:'2-digit'})+'</button>'+
+      '<div class="ce5-hits" id="ce5-hits-'+i+'" style="display:none"></div></div>'; });
   }
   h+='<button class="idf-go" id="ce5-again">🧘 New session</button>';
   const done=$('ce5-done'); done.innerHTML=h;
   done.querySelectorAll('.ce5-chk').forEach(b=>b.onclick=()=>{
-    const w=$('idf-when'); if(w) w.value=tsToLocalInput(+b.dataset.ts);
-    $('skt-id').click(); runIdentify();
+    const i=+b.dataset.i, ts=+b.dataset.ts, box=$('ce5-hits-'+i);
+    if(!box) return;
+    if(box.style.display!=='none'){ box.style.display='none'; b.classList.remove('on'); return; }   // tap again to collapse
+    b.classList.add('on'); box.style.display=''; box.innerHTML=ce5MarkHitsHTML(ts);
+    box.querySelectorAll('.ce5-hit').forEach(hb=>hb.onclick=()=>ce5ViewOnMap(hb.dataset.id, +hb.dataset.ts));
+    const ub=box.querySelector('.ce5-uap'); if(ub) ub.onclick=()=>{
+      const res=identifySky(ts, null, null) || {ts, rows:[], wantAz:null, wantAlt:null};
+      openUapForm(res);
+    };
   });
   const ag=$('ce5-again'); if(ag) ag.onclick=()=>{ done.style.display='none'; $('ce5-setup').style.display=''; ce5Conditions(); };
+}
+// What tracked objects were sunlit and above the horizon at a mark's instant — the shortlist
+// you pick your sighting from. Trains (no single id) are skipped from the tappable list.
+function ce5MarkHitsHTML(ts){
+  const res=identifySky(ts, null, null);
+  const lit=((res&&res.rows)||[]).filter(r=>r.lit && r.id);
+  let h='';
+  if(!lit.length){
+    h+='<div class="fr-note">Nothing tracked was sunlit above you at that moment — what you saw likely wasn’t a satellite catching the sun.</div>';
+  } else {
+    h+=lit.slice(0,8).map(r=>'<button class="ce5-hit" data-id="'+esc(r.id)+'" data-ts="'+ts+'">'+
+      '<span class="ce5-hit-n">'+(r.train?'✨ ':'🛰️ ')+esc(r.label)+'</span>'+
+      '<span class="ce5-hit-m">'+azCompass(r.az)+' '+Math.round(r.az)+'° · alt '+Math.round(r.el)+'°</span></button>').join('');
+  }
+  h+='<button class="idf-uap ce5-uap">👁 None of these — log as unidentified</button>';
+  return h;
+}
+// Tap a CE5 candidate → show where it was on the globe at the moment you marked, then let you
+// log it if it's a match. The ground track is drawn centred on the mark time.
+function ce5ViewOnMap(id, ts){
+  const s=SATS.find(x=>x.id===id); if(!s){ showErr('That object is no longer loaded — try again after data reloads.'); return; }
+  ce5PreviewPath={ sat:s, ts:ts };
+  selectSat(s);                        // flies to it, opens the detail card, draws its live track
+  // Re-point the camera at where it actually was at the mark time, not its live position.
+  try{ const d=new Date(ts), pv=satellite.propagate(s.satrec, d);
+    if(pv&&pv.position){ const gd=satellite.eciToGeodetic(pv.position, satellite.gstime(d));
+      flyTo(satellite.degreesLat(gd.latitude), satellite.degreesLong(gd.longitude), focusAltFor(s), 900); } }catch(e){}
+  updateOrbitPaths();                  // include the mark-time preview track
+  showCe5Confirm(s, ts);
+}
+function showCe5Confirm(s, ts){
+  let bar=$('ce5-confirm');
+  if(!bar){ bar=document.createElement('div'); bar.id='ce5-confirm'; document.body.appendChild(bar); }
+  let az=null, el=null;
+  try{ const d=new Date(ts), pv=satellite.propagate(s.satrec, d);
+    if(pv&&pv.position && observer){ const la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, satellite.gstime(d)));
+      az=(la.azimuth*R2D+360)%360; el=la.elevation*R2D; } }catch(e){}
+  const where = az==null ? '' : (' · '+azCompass(az)+' '+Math.round(az)+'°, alt '+Math.round(el)+'°');
+  bar.innerHTML='<div class="ce5c-t">'+esc(shortName(s.name))+' at '+
+      new Date(ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+esc(where)+'</div>'+
+    '<div class="ce5c-q">Is this what you saw?</div>'+
+    '<div class="ce5c-btns"><button class="ce5c-yes">✓ Log sighting</button>'+
+    '<button class="ce5c-no">✗ Not it</button></div>';
+  bar.classList.add('show');
+  bar.querySelector('.ce5c-yes').onclick=()=>{ logSighting(s, ts, {az, el}); hideCe5Confirm(); };
+  bar.querySelector('.ce5c-no').onclick=hideCe5Confirm;
+}
+function hideCe5Confirm(){
+  const bar=$('ce5-confirm'); if(bar) bar.classList.remove('show');
+  ce5PreviewPath=null; if(typeof updateOrbitPaths==='function') updateOrbitPaths();
 }
 function showCe5Log(){
   const rows=ce5Log();
@@ -9395,6 +9587,11 @@ function openUapForm(res){
   const m=$('uapmodal');
   m.querySelectorAll('.uap-g button').forEach(b=>b.classList.remove('on'));
   $('uap-notes').value=''; $('uap-share').checked=false;
+  // Prefill direction/height chips when the report came from an aimed AR capture.
+  const pre=(k,v)=>{ if(v==null) return; const g=m.querySelector('.uap-g[data-k="'+k+'"]'); if(!g) return;
+    const btn=g.querySelector('button[data-v="'+v+'"]'); if(btn){ btn.classList.add('on'); uapPick[k]=v; } };
+  if(r.wantAz!=null) pre('dir', azCompass8(r.wantAz));
+  if(r.wantAlt!=null) pre('height', r.wantAlt<25?'low (near horizon)':r.wantAlt<55?'mid sky':r.wantAlt<80?'high':'straight up');
   m.classList.add('show');
 }
 function initUapForm(){
@@ -9414,10 +9611,12 @@ function initUapForm(){
 }
 function saveUapReport(){
   const r=uapCtx || {ts:Date.now(), rows:[], wantAz:null, wantAlt:null};
-  const dir = r.wantAz==null ? '' : azCompass(r.wantAz);
+  // Prefer what the observer picked; fall back to the direction the Identify screen was aimed at.
+  const dir = uapPick.dir || (r.wantAz==null ? '' : azCompass(r.wantAz));
+  const height = uapPick.height || (r.wantAlt!=null ? (r.wantAlt+'°') : '');
   const ruled=(r.rows||[]).slice(0,3).map(x=>x.label+' ('+idfVerdict(x, r.wantAz)+')');
   const rec={ id:'uap-'+r.ts, name:'Unidentified'+(dir?(' · '+dir):''), kind:'uap', ts:r.ts,
-    uap:{ dir, alt:r.wantAlt, dur:uapPick.dur||'', count:uapPick.count||'', shape:uapPick.shape||'',
+    uap:{ dir, height, alt:r.wantAlt, dur:uapPick.dur||'', count:uapPick.count||'', shape:uapPick.shape||'',
       motion:uapPick.motion||'', bright:uapPick.bright||'',
       notes:(($('uap-notes').value)||'').slice(0,400), sky:r.skyText||'', ruled } };
   pushSightLog(rec);
@@ -9442,7 +9641,7 @@ function showUapReports(){
   if(!rows.length) return openList('UAP reports','<div class="fr-note">No reports yet.</div>');
   openList('Your UAP reports · '+rows.length, rows.map(x=>{
     const u=x.uap||{};
-    const bits=[u.dur, u.count&&(u.count+' object'+(u.count==='1'?'':'s')), u.shape, u.motion, u.bright].filter(Boolean).join(' · ');
+    const bits=[u.height, u.dur, u.count&&(u.count+' object'+(u.count==='1'?'':'s')), u.shape, u.motion, u.bright].filter(Boolean).join(' · ');
     return '<div class="lm-row uap-rep">'+
       '<div class="lm-n">👁 '+esc(x.name||'Unidentified')+'</div>'+
       '<div class="uap-meta">'+fmtSeen(x.ts)+(bits?(' · '+esc(bits)):'')+'</div>'+
