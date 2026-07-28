@@ -1,0 +1,87 @@
+name: Refresh TLE snapshots
+
+# Fetches the shared satellite element sets from Celestrak a few times a day and commits them
+# to data/tle/ so the app can serve ONE cached copy to every visitor. This is what keeps us off
+# Celestrak's back: instead of N users x every page load, Celestrak sees ~4 requests/day total,
+# from this one runner. Clients read data/tle/*.txt first and only fall back to Celestrak if a
+# snapshot is missing or unreachable.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'      # every 6 hours (at :17 to avoid the top-of-hour stampede)
+  workflow_dispatch: {}          # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write                # needed to commit the refreshed snapshots
+
+concurrency:
+  group: refresh-tle
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch element sets from Celestrak
+        run: |
+          set -u
+          mkdir -p data/tle
+          UA="SkyWatch-TLE-Bot (+https://github.com/nuno927-tech/skywatch)"
+          dl() { curl -sSfL --retry 3 --retry-delay 5 --max-time 60 -A "$UA" "$1"; }
+
+          # group id  ->  Celestrak query. The id must match the GROUPS ids in index.html so the
+          # client finds data/tle/<id>.txt. ISS is a single object fetched by catalogue number.
+          declare -A Q=(
+            [iss]="CATNR=25544"
+            [stations]="GROUP=stations"
+            [visual]="GROUP=visual"
+            [gps-ops]="GROUP=gps-ops"
+            [galileo]="GROUP=galileo"
+            [oneweb]="GROUP=oneweb"
+            [amateur]="GROUP=amateur"
+            [geo]="GROUP=geo"
+            [weather]="GROUP=weather"
+          )
+
+          for id in "${!Q[@]}"; do
+            echo "· $id"
+            if dl "https://celestrak.org/NORAD/elements/gp.php?${Q[$id]}&FORMAT=tle" > "data/tle/$id.txt.new"; then
+              mv "data/tle/$id.txt.new" "data/tle/$id.txt"
+            else
+              echo "  fetch failed for $id — keeping previous snapshot"
+              rm -f "data/tle/$id.txt.new"
+            fi
+            sleep 3        # be gentle between requests
+          done
+
+          # Starlink is huge; cap the snapshot to keep the committed file small (3 lines per sat).
+          echo "· starlink (capped)"
+          if dl "https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle" | head -n 7500 > "data/tle/starlink.txt.new"; then
+            mv "data/tle/starlink.txt.new" "data/tle/starlink.txt"
+          else
+            echo "  fetch failed for starlink — keeping previous snapshot"
+            rm -f "data/tle/starlink.txt.new"
+          fi
+
+          # Safety net: never commit an empty file or an HTML error page. Restore the last good copy.
+          for f in data/tle/*.txt; do
+            [ -f "$f" ] || continue
+            if [ ! -s "$f" ] || head -c1 "$f" | grep -q '<'; then
+              echo "bad payload in $f — reverting"
+              git checkout -- "$f" 2>/dev/null || rm -f "$f"
+            fi
+          done
+
+      - name: Commit if changed
+        run: |
+          git config user.name "tle-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/tle
+          if git diff --cached --quiet; then
+            echo "No changes — nothing to commit."
+          else
+            git commit -m "chore(data): refresh TLE snapshots"
+            git push
+          fi
