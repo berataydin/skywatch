@@ -2937,7 +2937,7 @@
 </script>
 
 <script>
-const BUILD = 'v210';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v212';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7729,6 +7729,7 @@ function registerSW(){
 let currentUser=null, unsubSettings=null, applyingRemote=false, saveTimer=null, firstSyncPending=false, wasSignedIn=false;
 // Friends / presence
 let myProfile=null, friends=[], unsubFriends=null, unsubMyProfile=null, friendProfileUnsubs={}, presenceTimer=null, friendsTick=null;
+let publicSummarySynced=false;   // one-shot per session: heals a stale usernames/{name} summary on load
 // Friend requests + user directory
 let incomingReqs=[], unsubRequests=null, allUsers=[], sentRequests=new Set(), dirFilter='', reqQueue=[], reqPopBusy=false;
 let pinnedFriends=new Set();   // friends whose pin is held on the map until you move it
@@ -8076,6 +8077,9 @@ function startSocial(user){
     myProfile = s.exists()? s.data() : null; rebuildSeenSet(); backfillSightLog();
     renderMe(); updateAccountUI(currentUser); renderLeaderboard(); renderHero();
     checkNewAchievements();          // celebrate anything newly earned
+    // Self-heal the public summary once per session: older accounts have a usernames/{name} doc
+    // whose score+awards were computed without the stat counters, so refresh it from the full profile.
+    if(!publicSummarySynced && myProfile && myProfile.unameLower){ publicSummarySynced=true; setTimeout(syncPublicSummary, 1500); }
     if($('usermodal') && $('usermodal').classList.contains('show')) renderUserPanel();   // keep the User panel live
     if(feedScope==='mine') renderFeed();
     if(selectedLaunch) renderLaunchDetail(selectedLaunch);
@@ -8133,7 +8137,7 @@ function stopSocial(){
   if(unsubPings){ unsubPings(); unsubPings=null; }
   if(unsubFeedWatch){ unsubFeedWatch(); unsubFeedWatch=null; }
   Object.values(friendProfileUnsubs).forEach(u=>{ try{u();}catch(e){} }); friendProfileUnsubs={};
-  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear();
+  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear(); publicSummarySynced=false;
   unlockQueue=[]; unlockBusy=false;   // the celebrated-set is stored per account, not reset here
   stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); stopChatWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
   rebuildSeenSet();   // clears the seen set on sign-out
@@ -8396,6 +8400,7 @@ async function bumpStat(key, by){
   try{
     const {db, doc, setDoc}=window.fb;
     await setDoc(doc(db,'profiles',currentUser.uid), {stats:cur}, {merge:true});
+    await syncPublicSummary();              // a stat-based award may have just unlocked — keep the public summary in step
   }catch(e){ console.warn('stat '+key, e); }
 }
 // Record a distinct tool the user has tried — powers the Curious award.
@@ -8407,7 +8412,8 @@ async function markExplored(key){
   set.add(key); cur.explored=[...set];
   myProfile.stats=cur;
   try{ const {db, doc, setDoc}=window.fb;
-    await setDoc(doc(db,'profiles',currentUser.uid), {stats:cur}, {merge:true}); }catch(e){}
+    await setDoc(doc(db,'profiles',currentUser.uid), {stats:cur}, {merge:true});
+    await syncPublicSummary(); }catch(e){}
 }
 // 8-point compass for the Compass Rose award.
 function azCompass8(a){
@@ -8459,14 +8465,26 @@ function mergeSightLog(remote){
   if(changed){ sightLog.sort((a,b)=>a.ts-b.ts);
     if(sightLog.length>SLOG_MAX) sightLog=sightLog.slice(-SLOG_MAX); saveSightLogLocal(); }
 }
+// The public leaderboard/community view reads the compact usernames/{name} summary, NOT the full
+// profile. It must be computed from the WHOLE profile (stats counters, friendCount, granted) or
+// stat-based awards (Sky Detective, Contact, Curious, Planner, Perfect Pass, Social Butterfly,
+// Pen Pal) and their points silently vanish for anyone viewing you from another account.
+async function syncPublicSummary(){
+  if(!currentUser || !window.fb || !myProfile || !myProfile.unameLower) return;
+  const st=statsFromProfile(myProfile), earned=achEarned(st), score=scoreOf(st,earned);
+  try{ const {db,doc,setDoc}=window.fb;
+    await setDoc(doc(db,'usernames',myProfile.unameLower),
+      {badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score,
+       listed:prefs.listed!==false, ranked:prefs.ranked!==false}, {merge:true});
+  }catch(e){ console.warn('public summary', e); }
+}
 async function commitSeen(list, days){
   if(!currentUser||!window.fb||!myProfile) return;
   const {db,doc,setDoc}=window.fb;
-  const st=statsFromProfile({seen:list, sightDays:days}), earned=achEarned(st), score=scoreOf(st,earned);
+  myProfile.seen=list; myProfile.sightDays=days;              // keep the local profile current so the summary is complete
+  const st=statsFromProfile(myProfile);
   await setDoc(doc(db,'profiles',currentUser.uid), {seen:list, sightDays:days, badges:st.badges}, {merge:true});
-  if(myProfile.unameLower){ try{ await setDoc(doc(db,'usernames',myProfile.unameLower),
-    {badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score,
-     listed:prefs.listed!==false, ranked:prefs.ranked!==false}, {merge:true}); }catch(e){} }
+  await syncPublicSummary();                                  // recompute the public summary from the full profile
 }
 // Highest elevation the object reached from the observer across a short window around the
 // claimed time (a 10-min lookback covers "I saw it a few minutes ago, logging it now").
@@ -8617,7 +8635,12 @@ function openMyAchievements(){
   $('achieve').classList.add('show');
 }
 function openAchievements(u){
-  if(u && u.uid && currentUser && u.uid===currentUser.uid) return openMyAchievements();
+  if(!u) return;
+  if(u.uid && currentUser && u.uid===currentUser.uid) return openMyAchievements();
+  // Both entry points (Friends tab and the Awards leaderboard) open the same rich profile that
+  // mirrors "Your Journey". If we somehow lack a uid to fetch the full profile, fall back to the
+  // compact summary rather than showing nothing.
+  if(u.uid){ openFriendProfile(u); return; }
   renderAchievements({ username:u.username||'user', badges:u.badges||0, sightings:u.sightings||0,
     streak:u.streak||0, achSet:new Set(u.ach||[]), score:u.score||0 });
   $('achieve').classList.add('show');
@@ -10498,39 +10521,36 @@ function renderFriendProfile(p, f){
   const seen=Array.isArray(prof.seen)?prof.seen:[];
   // Prefer their chosen icon; the profile doc carries it, the friends list is the fallback.
   const av = avatarHTML({icon: prof.icon || f.icon, photoURL: prof.photoURL || f.photoURL}, uname);
-  const online=(Date.now()-(f.lastSeen||prof.lastSeen||0))<150000;
-  let since='';
+  // Earliest sighting → the "Member since" date and the "First sighting" line, exactly like Your Journey.
+  let since='', firstName='', firstTs=0;
   if(seen.length){
-    const first=seen.reduce((a,b)=>((a.ts||a.last||Infinity)<(b.ts||b.last||Infinity)?a:b));
-    const t=first.ts||first.last;
-    if(t) since=new Date(t).toLocaleDateString([], {month:'long', year:'numeric'});
+    const fe=seen.reduce((a,b)=>(((a.ts||a.last||Infinity) < (b.ts||b.last||Infinity)) ? a : b));
+    firstTs=fe.ts||fe.last||0; firstName=fe.name||fe.id||'—';
+    if(firstTs) since=new Date(firstTs).toLocaleDateString([], {month:'long', year:'numeric'});
   }
-  // Same structure as the Awards page: hero block, then the 4-up stat grid, then awards.
+  // Identical layout to renderHero ("Your Journey"): hero block (avatar, name, member-since, points),
+  // the four chips, then the first-sighting line, then the awards grid.
   $('ach-name').textContent='';
   $('ach-hero').innerHTML=
     '<div class="hero-top"><div class="hero-av">'+av+'</div>'+
       '<div class="hero-name">@'+esc(uname)+'</div>'+
-      '<div class="hero-since">'+(online?'<span class="fp-live">● online now</span>':'offline')+
-        (since?(' · watching since '+since):'')+'</div>'+
+      (since?'<div class="hero-since">Member since '+since+'</div>':'')+
       '<div class="hero-score">'+score+' <span>points</span></div></div>';
   $('ach-stats').innerHTML=
     '<button class="hs-btn" id="fp-objects" title="Objects seen">'+
       '<b>'+st.badges+'</b><span>🛰 objects ›</span></button>'+
-    '<div class="hs-stat"><b>'+st.sightings+'</b><span>👁 sightings</span></div>'+
+    '<button class="hs-btn" id="fp-sightings" title="All sightings">'+
+      '<b>'+st.sightings+'</b><span>👁 sightings ›</span></button>'+
     '<div class="hs-stat"><b>'+st.maxStreak+'</b><span>🔥 streak</span></div>'+
     '<div class="hs-stat"><b>'+earned.length+'/'+ACH.length+'</b><span>🏆 awards</span></div>';
   $('ach-grid').classList.remove('ach-mine');
   $('ach-grid').innerHTML=
-    (st.starlink||st.geo||st.launches
-      ? '<div class="hero-note">'+
-          (st.starlink?('<b>'+st.starlink+'</b> Starlink'):'')+
-          (st.geo?((st.starlink?' · ':'')+'<b>'+st.geo+'</b> geostationary'):'')+
-          (st.launches?(((st.starlink||st.geo)?' · ':'')+'<b>'+st.launches+'</b> launches'):'')+
-        '</div>' : '')+
-    '<div class="fr-sub">Their awards · '+earned.length+' of '+ACH.length+'</div>'+
+    (firstTs?'<div class="hero-note">First sighting · <b>'+esc(firstName)+'</b> on '+fmtSeen(firstTs)+'</div>':'')+
+    (earned.length===ACH.length?'<div class="hero-note">🎉 Every award unlocked. Legend.</div>':'')+
+    '<div class="fr-sub">Their awards</div>'+
     achGridHTML(st, earnedSet, false);
-  const ob=$('fp-objects');
-  if(ob) ob.onclick=()=>showFriendObjects(uname, seen);
+  const ob=$('fp-objects'); if(ob) ob.onclick=()=>showFriendObjects(uname, seen);
+  const sg=$('fp-sightings'); if(sg) sg.onclick=()=>showFriendObjects(uname, seen);
   const lg=$('ach-log');
   if(lg){
     if(!p){ lg.innerHTML='<div class="fr-note">Couldn’t load their full profile — showing what’s cached.</div>';
