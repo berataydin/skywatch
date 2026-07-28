@@ -1544,6 +1544,17 @@
   .lgi-dot::before{content:'';width:11px;height:11px;border-radius:50%;background:currentColor;
     box-shadow:0 0 8px currentColor,0 0 16px currentColor}
   .lgi-empty{font-size:11.5px;color:var(--muted);padding:4px 2px 2px}
+  /* --- Starlink train clusters --- */
+  .train-grp{margin-bottom:2px}
+  .train-hd{display:flex;align-items:stretch;gap:5px}
+  .train-hd .train-row{flex:1;min-width:0}
+  .train-exp{flex:0 0 auto;width:40px;border-radius:12px;border:1px solid var(--border);
+    background:rgba(185,240,255,.08);color:#b9f0ff;font-size:14px;cursor:pointer}
+  .train-exp:hover{border-color:rgba(185,240,255,.5)}
+  .train-mem{display:none;flex-direction:column;gap:5px;margin:5px 0 4px;padding-left:8px;
+    border-left:2px solid rgba(185,240,255,.28)}
+  .train-mem.open{display:flex}
+  .train-mem .lgi{min-height:42px;padding:8px 11px}
   /* --- Detail-card actions --- */
   #d-seen,#d-fav,#d-share{min-height:46px;border-radius:13px;font-size:13.5px;box-shadow:var(--neon-rest)}
   #d-seen:hover,#d-fav:hover,#d-share:hover{box-shadow:var(--neon-hot)}
@@ -2926,7 +2937,7 @@
 </script>
 
 <script>
-const BUILD = 'v206';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v208';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3579,9 +3590,14 @@ function initGlobe(){
   if(controls.touches){ controls.touches.ONE = 0; controls.touches.TWO = 3; }
   // Persist zoom level: saveSettings() debounces, so this commits only after the camera settles.
   controls.addEventListener('change', ()=>{ if(!controls.autoRotate) saveSettings(); });
-  // stop auto-rotate once the user interacts
-  ['pointerdown','wheel','touchstart'].forEach(ev=>
-    world.renderer().domElement.addEventListener(ev,()=>{controls.autoRotate=false},{once:true}));
+  // Auto-rotate is driven only by the pref (via applyAutoRotate). While you're actively dragging
+  // or zooming, pause it so the globe doesn't fight you; the moment you let go it resumes to
+  // whatever the setting says — instead of the old handler that killed it permanently on first touch.
+  const dom=world.renderer().domElement;
+  let wheelT=null;
+  ['pointerdown','touchstart'].forEach(ev=> dom.addEventListener(ev, ()=>{ controls.autoRotate=false; }));
+  ['pointerup','pointercancel','touchend'].forEach(ev=> dom.addEventListener(ev, ()=>{ applyAutoRotate(); }));
+  dom.addEventListener('wheel', ()=>{ controls.autoRotate=false; clearTimeout(wheelT); wheelT=setTimeout(applyAutoRotate, 1200); });
   // a clicked friend pin is cleared as soon as the user moves the map
   ['pointerdown','wheel','touchstart'].forEach(ev=>
     world.renderer().domElement.addEventListener(ev, clearPinnedFriends));
@@ -3819,7 +3835,7 @@ function startPhotoTick(){
 let usePoints=false, useWorker=false, satPoints=null, satGeo=null, propWorker=null,
     workerBusy=false, tickTimer=null, workerWatch=null, workerGen=0;
 const POINT_CAP=12000, pointSatIndex=[], WHITE=[1,1,1];
-let DECAY_RGB=null, TRAIN_RGB=null, UNK_RGB=null;   // lazily-computed highlight colours for cross-listed layers
+let DECAY_RGB=null, TRAIN_RGB=null, UNK_RGB=null, TRAINSEL_RGB=null;   // lazily-computed highlight colours for cross-listed layers
 function hexRgb(hex){
   const h=(hex||'#b9c7e6').replace('#',''); const n=parseInt(h.length===3
     ? h.split('').map(c=>c+c).join('') : h, 16);
@@ -3913,13 +3929,16 @@ function renderPoints(){
     const c=world.getCoords(s.lat, s.lng, s.alt);
     pos[k*3]=c.x; pos[k*3+1]=c.y; pos[k*3+2]=c.z;
     const isSel = s===selected;
-    const rgb = (isSel || up) ? WHITE
+    const inTrain = selectedTrain && selectedTrain.has(s.id);   // member of the batch the user tapped
+    const rgb = isSel ? WHITE
+      : inTrain ? (TRAINSEL_RGB || (TRAINSEL_RGB=hexRgb('#aef2ff')))
+      : up ? WHITE
       : (enabled['decaying'] && isDecaying(s)) ? (DECAY_RGB || (DECAY_RGB=hexRgb('#ff4d4d')))
       : (enabled['trains'] && isStarlinkTrain(s)) ? (TRAIN_RGB || (TRAIN_RGB=hexRgb('#b9f0ff')))
       : (enabled['unknown'] && objType(s)==='UNK') ? (UNK_RGB || (UNK_RGB=hexRgb('#c3ccdb')))
       : (s._rgb || (s._rgb=hexRgb(s.color)));
     col[k*3]=rgb[0]; col[k*3+1]=rgb[1]; col[k*3+2]=rgb[2];
-    sz[k] = isSel ? 11 : (s.id==='25544') ? 9 : up ? 6 : (favs.size && favs.has(s.id) ? 5.5 : 3.2);
+    sz[k] = isSel ? 11 : inTrain ? 7 : (s.id==='25544') ? 9 : up ? 6 : (favs.size && favs.has(s.id) ? 5.5 : 3.2);
     pointSatIndex[k]=i; k++;
   }
   satGeo.setDrawRange(0,k);
@@ -4102,6 +4121,7 @@ function pickSat(e, THREE, dom){
     if(si!=null && SATS[si]){ selectSat(SATS[si]); return; }
   }
   if(selected || selectedLaunch) clearSelection();   // tapped empty space → dismiss the highlight
+  else if(selectedTrain) clearTrain();               // or clear a whole-train highlight
 }
 
 /* ---------- Orbit paths (ISS + whatever is selected) ---------- */
@@ -4143,6 +4163,13 @@ function ce5PreviewPathData(){
   const pts=satTrackPoints(s, Math.round(centreMin-half), Math.round(centreMin+half), null, step);
   return pts.length>1 ? [{ points:pts, color:['rgba(255,214,102,.95)','rgba(255,214,102,0)'] }] : [];
 }
+// The shared orbit track through a highlighted Starlink train (drawn from a mid-batch member).
+function trainLeadPathData(){
+  if(!selectedTrain || !selectedTrainLead || !selectedTrainLead.satrec) return [];
+  const s=selectedTrainLead, per=orbitMinutes(s), step=per>240?4:1;
+  const pts=satTrackPoints(s, 0, Math.round(per), null, step);
+  return pts.length>1 ? [{ points:pts, color:[hexA('#aef2ff',.85), hexA('#aef2ff',0)] }] : [];
+}
 // Paths only — cheap enough to run on every selection.
 function updateOrbitPaths(){
   if(typeof world==='undefined' || !world) return;
@@ -4159,6 +4186,7 @@ function updateOrbitPaths(){
   if(!isPhotoreal()){ const term=terminatorPath();
     if(term.length>1) paths.push({ points: term, color:['rgba(130,190,255,.5)','rgba(130,190,255,.5)'] }); }
   for(const p of ce5PreviewPathData()) paths.push(p);
+  for(const p of trainLeadPathData()) paths.push(p);
   world.pathsData(paths);
 }
 function updateIssOrbit(){
@@ -4178,6 +4206,7 @@ function updateIssOrbit(){
   if(!isPhotoreal()){ const term = terminatorPath();   // day/night boundary line
     if(term.length>1) paths.push({ points: term, color:['rgba(130,190,255,.5)','rgba(130,190,255,.5)'] }); }
   for(const p of ce5PreviewPathData()) paths.push(p);
+  for(const p of trainLeadPathData()) paths.push(p);
   world.pathsData(paths);
   const polys=[];                 // flat night veil is replaced by the shader in Photoreal mode
   if(!isPhotoreal()){ const night=nightPolygon(); night.__night=true; polys.push(night); }
@@ -4703,12 +4732,20 @@ const ME_ZOOM = 1.15;   // default centre-on-location zoom (used when your locat
 const ME_ZOOMS = [0.5, 3.8, 1.8];   // tap 1: tight on your avatar · tap 2: way out · tap 3: whole Earth fills the frame
 let meStage = -1;
 
+// Single source of truth for the globe's spin: rotate only when the pref is on AND nothing is
+// selected (so inspecting a satellite holds still) AND no fly animation is mid-flight. Every
+// pause/resume point routes through here so the setting can't drift out of sync with reality.
+function applyAutoRotate(){
+  if(typeof world==='undefined' || !world) return;
+  const c=world.controls(); if(!c) return;
+  c.autoRotate = !!prefs.autorotate && !selected && !selectedLaunch && !flyRAF;
+}
 // globe.gl's built-in animated pointOfView transition does not progress in this
 // build, so we animate the camera ourselves frame-by-frame (instant moves work).
 let flyRAF = null;
 function flyTo(lat, lng, altitude, ms){
   ms = ms || 900;
-  world.controls().autoRotate = false;
+  world.controls().autoRotate = false;              // hold still through the move
   const start = world.pointOfView();
   let dLng = lng - start.lng;                    // take the shortest way round
   if(dLng > 180) dLng -= 360; else if(dLng < -180) dLng += 360;
@@ -4722,7 +4759,7 @@ function flyTo(lat, lng, altitude, ms){
       lng: start.lng + dLng * e,
       altitude: start.altitude + (altitude - start.altitude) * e
     }, 0);
-    if(k < 1) flyRAF = requestAnimationFrame(step); else flyRAF = null;
+    if(k < 1) flyRAF = requestAnimationFrame(step); else { flyRAF = null; applyAutoRotate(); }   // resume spin if the pref allows
   }
   flyRAF = requestAnimationFrame(step);
 }
@@ -4747,8 +4784,8 @@ function setObserver(lat,lng,recenter,source,accM){
     : observerAcc>5000 ? ` · ±${Math.round(observerAcc/1000)} km approx`
     : ` · ±${Math.round(observerAcc)} m`;
   $('oh-sub').innerHTML = `Your location · <b>${lat.toFixed(3)}°, ${lng.toFixed(3)}°</b>${acc}`;
-  world.controls().autoRotate=false;
   if(recenter!==false){ flyTo(lat, lng, ME_ZOOM, 900); if(isMobile()) openSheet('overhead'); }
+  else applyAutoRotate();
   updateLocHint();
   saveSettings();
   passCache.clear(); if(selected) renderPasses();   // new location invalidates every pass table
@@ -4853,6 +4890,7 @@ function renderLegend(){
       const id=n.dataset.id; enabled[id]=!enabled[id];
       n.classList.toggle('off',!enabled[id]);
       if(id==='iss') updateIssOrbit();
+      if((id==='trains'||id==='starlink') && !enabled[id] && selectedTrain){ selectedTrain=null; selectedTrainLead=null; }   // drop the batch highlight when its layer is hidden
       if(id==='decaying'||id==='trains'||id==='unknown') renderFrame();   // re-colour the cross-listed highlight on/off
       if(id==='starlink' && enabled['starlink']) loadMoreStarlink();
       if(id==='rocket'){ renderLaunchList(); if(enabled['rocket'] && !LAUNCHES.length) loadLaunches(); renderFrame(); }
@@ -4886,6 +4924,40 @@ function renderLayerItems(id, box){
   }
   const decaying = id==='decaying', trains = id==='trains', unknown = id==='unknown';
   const virtColor = trains ? '#b9f0ff' : unknown ? '#c3ccdb' : '#ff4d4d';
+  // Trains get their own grouped view: one row per launch batch, tap to highlight the whole
+  // string on the globe, expand (▾) to see and pick individual members.
+  if(trains){
+    const tr=starlinkTrains();
+    if(tr.length){
+      box.innerHTML=tr.map((t,i)=>
+        '<div class="train-grp">'+
+          '<div class="train-hd">'+
+            '<button class="nt-rank lgi train-row" data-train="'+i+'">'+
+              '<span class="nt-num lgi-dot" style="color:#b9f0ff">🚂</span>'+
+              '<span class="nt-body"><span class="nt-nm">'+esc(t.label)+' · '+t.count+' sats</span>'+
+              '<span class="nt-when">~'+t.altKm+' km · incl '+t.incDeg+'° · plane '+t.raanDeg+'°</span></span>'+
+            '</button>'+
+            '<button class="train-exp" data-train="'+i+'" aria-label="List satellites">▾</button>'+
+          '</div>'+
+          '<div class="train-mem" id="train-mem-'+i+'"></div>'+
+        '</div>').join('');
+      box.querySelectorAll('.train-row').forEach(b=>b.onclick=()=>{ const t=tr[+b.dataset.train]; if(t) selectTrain(t); });
+      box.querySelectorAll('.train-exp').forEach(b=>b.onclick=e=>{ e.stopPropagation();
+        const i=+b.dataset.train, t=tr[i], m=$('train-mem-'+i); if(!m||!t) return;
+        const open=m.classList.toggle('open'); b.textContent=open?'▴':'▾';
+        if(!open){ m.innerHTML=''; return; }
+        m.innerHTML=t.members.slice(0,40).map(s=>{
+          const up = observer && s.elevation!=null && s.elevation>0;
+          const meta = up ? (Math.round(s.elevation)+'° up'+(s.azimuth!=null?(' · '+azCompass(s.azimuth)):'')) : (s.altKm?fmtDist(s.altKm)+' up':'below horizon');
+          return '<button class="nt-rank lgi train-memrow" data-id="'+esc(s.id)+'"><span class="nt-num lgi-dot" style="color:#b9f0ff"></span>'+
+            '<span class="nt-body"><span class="nt-nm">'+esc(s.name)+'</span><span class="nt-when">'+meta+'</span></span></button>'; }).join('')+
+          (t.members.length>40?('<div class="lgi-empty">…and '+(t.members.length-40)+' more</div>'):'');
+        m.querySelectorAll('[data-id]').forEach(mb=>mb.onclick=()=>{ const s=SATS.find(x=>x.id===mb.dataset.id); if(s){ if(isMobile()) closeSheets(); selectSat(s); } });
+      });
+      return;
+    }
+    // no clusters met the threshold — fall through to the flat low-Starlink list below
+  }
   let items = decaying ? SATS.filter(isDecaying)
     : trains ? SATS.filter(isStarlinkTrain)
     : unknown ? SATS.filter(s=>objType(s)==='UNK')
@@ -4917,7 +4989,7 @@ function renderLayerItems(id, box){
 function updateLegendCounts(){
   GROUPS.forEach(g=>{
     const c = g.id==='decaying' ? SATS.filter(isDecaying).length
-      : g.id==='trains' ? SATS.filter(isStarlinkTrain).length
+      : g.id==='trains' ? (starlinkTrains().length || SATS.filter(isStarlinkTrain).length)
       : g.id==='unknown' ? SATS.filter(s=>objType(s)==='UNK').length
       : g.launches ? LAUNCHES.length
       : SATS.filter(s=>s.group===g.id).length;
@@ -4935,6 +5007,7 @@ function selectSat(s){
   SFX.select(); Haptics.select();
   // Selecting a different object clears any lingering CE5 mark-preview track + confirm bar.
   if(ce5PreviewPath && ce5PreviewPath.sat!==s){ ce5PreviewPath=null; const cb=$('ce5-confirm'); if(cb) cb.classList.remove('show'); }
+  selectedTrain=null; selectedTrainLead=null;     // picking one object drops any whole-train highlight
   selected=s; selectedLaunch=null;
   $('detail').classList.remove('launch'); collapseDetail();   // open showing just name + action buttons
   const act=$('d-actions'); if(act) act.style.display='';
@@ -4953,6 +5026,7 @@ function selectSat(s){
 function deselectSat(){ if(!selected && !selectedLaunch) return; selected=null; selectedLaunch=null;
   if(ce5PreviewPath){ ce5PreviewPath=null; const cb=$('ce5-confirm'); if(cb) cb.classList.remove('show'); }
   if(!isMobile()){ const d=$('detail'); if(d) d.style.display='none'; }   // desktop: hide the floating card
+  applyAutoRotate();                        // nothing selected now → resume spin if the pref is on
   renderFrame(); updateOrbitPaths(); }
 function clearSelection(){
   deselectSat();
@@ -4989,6 +5063,60 @@ function isStarlinkTrain(s){
   const a=meanAltKm(s);
   return a!=null && a<TRAIN_MAX_ALT;
 }
+/* Cluster the low Starlinks into distinct trains (launch batches). Sats from one launch share an
+   orbital plane (inclination + RAAN) and altitude and fly strung out along the same track, so we
+   bucket by those and keep groups of a few or more. Cached until the loaded set changes. */
+const TRAIN_GROUP_MIN=4;
+let _trainCache=null, _trainKey='';
+function starlinkTrains(){
+  if(_trainCache && _trainKey===String(SATS.length)) return _trainCache;
+  const groups=new Map();
+  for(const s of SATS){
+    if(s.group!=='starlink' || !s.satrec) continue;
+    const alt=meanAltKm(s); if(alt==null || alt>=TRAIN_MAX_ALT) continue;
+    const inc=(s.satrec.inclo||0)*R2D, raan=(((s.satrec.nodeo||0)*R2D)%360+360)%360;
+    const key=Math.round(inc)+'|'+Math.round(raan/3)+'|'+Math.round(alt/15);
+    let g=groups.get(key); if(!g){ g={members:[], raan, inc, altSum:0}; groups.set(key,g); }
+    g.members.push(s); g.altSum+=alt;
+  }
+  const out=[];
+  for(const g of groups.values()){
+    if(g.members.length<TRAIN_GROUP_MIN) continue;
+    g.members.sort((a,b)=>((a.satrec.mo||0)-(b.satrec.mo||0)));   // head-to-tail along the orbit
+    out.push({ members:g.members, count:g.members.length,
+      altKm:Math.round(g.altSum/g.members.length), raanDeg:Math.round(g.raan), incDeg:Math.round(g.inc),
+      ids:new Set(g.members.map(m=>m.id)) });
+  }
+  out.sort((a,b)=>b.count-a.count);
+  out.forEach((t,i)=>t.label='Train '+String.fromCharCode(65+(i%26))+(i>=26?('·'+(i+1)):''));
+  _trainCache=out; _trainKey=String(SATS.length);
+  return out;
+}
+let selectedTrain=null, selectedTrainLead=null;   // a whole batch highlighted together (Set of ids + a representative for the track)
+function flyToTrain(members){
+  const pts=members.filter(s=>typeof s.lat==='number' && typeof s.lng==='number');
+  if(!pts.length) return;
+  let x=0,y=0,z=0;                                 // vector mean handles the ±180° longitude seam
+  for(const s of pts){ const la=s.lat*D2R, lo=s.lng*D2R; x+=Math.cos(la)*Math.cos(lo); y+=Math.cos(la)*Math.sin(lo); z+=Math.sin(la); }
+  const lat=Math.atan2(z, Math.hypot(x,y))*R2D, lng=Math.atan2(y,x)*R2D;
+  flyTo(lat, lng, 1.5, 900);
+}
+function selectTrain(t){
+  if(!t || !t.members || !t.members.length) return;
+  SFX.select(); Haptics.select();
+  selected=null; selectedLaunch=null;             // a train is a group, not a single-object selection
+  if(ce5PreviewPath){ ce5PreviewPath=null; const cb=$('ce5-confirm'); if(cb) cb.classList.remove('show'); }
+  selectedTrain=t.ids; selectedTrainLead=t.members[Math.floor(t.members.length/2)];
+  enabled['starlink']=true; enabled['trains']=true;   // make sure the batch is actually drawn
+  syncLayerToggle('starlink'); syncLayerToggle('trains');
+  if(isMobile()) closeSheets();
+  flyToTrain(t.members);
+  renderFrame(); updateOrbitPaths();
+  showToast('🚂 '+t.label+' · '+t.count+' satellites highlighted');
+}
+function clearTrain(){ if(!selectedTrain && !selectedTrainLead) return;
+  selectedTrain=null; selectedTrainLead=null; renderFrame(); updateOrbitPaths(); }
+function syncLayerToggle(id){ const n=document.querySelector('.lg[data-id="'+id+'"]'); if(n) n.classList.toggle('off', !enabled[id]); }
 function orbitDetails(s){
   try{
     const a=s.satrec.a*6378.137, e=s.satrec.ecco||0;
@@ -6291,7 +6419,7 @@ function applyPrefs(){
   $('notify-groups').classList.toggle('show', prefs.notify);
   ['iss','stations','visual','rocket'].forEach(k=>{ const el=$('nt-'+k); if(el) el.classList.toggle('on', !!(prefs.notifyGroups&&prefs.notifyGroups[k])); });
   if(typeof world!=='undefined' && world){
-    world.controls().autoRotate = prefs.autorotate;
+    applyAutoRotate();
     updateIssOrbit();
     if(selected) renderDetail(selected);
   }
