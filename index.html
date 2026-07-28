@@ -2937,7 +2937,7 @@
 </script>
 
 <script>
-const BUILD = 'v212';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v213';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7431,10 +7431,41 @@ async function admRenderAdmins(pane){
       '<div class="dev-row"><span class="dev-k">built in</span><span class="dev-v">'+esc(u)+'</span></div>').join(''))+
     admins.map(a=>'<div class="dev-row"><span class="dev-k">'+esc(a.username||a._id.slice(0,10))+'</span>'+
       '<span class="dev-v"><button class="adm-x" data-a="adm-del:'+esc(a._id)+'">remove</button></span></div>').join('')+
-    '<div class="usr-row"><input id="adm-new" placeholder="@username to promote" /><button id="adm-add">Add</button></div>';
+    '<div class="usr-row"><input id="adm-new" placeholder="@username to promote" /><button id="adm-add">Add</button></div>'+
+    '<div class="usr-note" style="margin-top:14px">Maintenance</div>'+
+    '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
+    '<div class="usr-note">Refreshes every user’s points + awards so the rankings and profile views match. Safe to run anytime.</div>';
   $('adm-add').onclick=admAddAdmin;
+  const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
   const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   admWire(pane);
+}
+// One-time backfill: recompute every user's score + awards from their profile and write both the
+// profile and the public username summary. Fixes stale/low scores written by older app versions so
+// the rankings and profile views agree for everyone. Admins may write any profile/username doc.
+async function admRecomputeScores(btn){
+  if(!window.fb) return;
+  if(!confirm('Recompute every user’s score and awards from their profile?\n\nThis refreshes the leaderboard and profile summaries for all users so the numbers finally match.')) return;
+  const {db, collection, getDocs, doc, setDoc}=window.fb;
+  if(btn){ btn.disabled=true; btn.textContent='Recomputing…'; }
+  let done=0, fail=0;
+  try{
+    const snap=await getDocs(collection(db,'profiles'));
+    for(const d of snap.docs){
+      const p=d.data()||{};
+      try{
+        const st=statsFromProfile(p), earned=achEarned(st), score=scoreOf(st,earned);
+        const pub={ badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score };
+        await setDoc(doc(db,'profiles',d.id), pub, {merge:true});
+        const lower=p.unameLower || (p.username||'').toLowerCase();
+        if(lower) await setDoc(doc(db,'usernames',lower), pub, {merge:true});
+        done++;
+      }catch(e){ fail++; }
+    }
+    adminLog('recompute-scores', done+' ok · '+fail+' failed');
+    showToast('✅ Recomputed '+done+' user'+(done===1?'':'s')+(fail?(' · '+fail+' failed'):''), true);
+  }catch(e){ showErr('Backfill failed: '+(e.code||e.message||e)); }
+  if(btn){ btn.disabled=false; btn.textContent='↻ Recompute all scores'; }
 }
 async function admToggleLoginNotify(){
   const next = !(FLAGS.notifyLogins===true);
@@ -8096,10 +8127,15 @@ function startSocial(user){
         friendProfileUnsubs[fid]=onSnapshot(doc(db,'profiles',fid), ps=>{
           if(ps.exists()){ const p=ps.data();
             f.username=p.username||f.username; f.displayName=p.displayName||f.displayName; f.photoURL=p.photoURL||f.photoURL;
-            f.lat=(typeof p.lat==='number')?p.lat:null; f.lng=(typeof p.lng==='number')?p.lng:null; f.lastSeen=p.lastSeen||0; f.badges=p.badges||0; f.icon=p.icon||'';
-            // The full profile is already here, so derive their headline numbers once.
+            f.lat=(typeof p.lat==='number')?p.lat:null; f.lng=(typeof p.lng==='number')?p.lng:null; f.lastSeen=p.lastSeen||0; f.icon=p.icon||'';
+            // Prefer the denormalised summary so the list, leaderboard and profile all show the same
+            // number; fall back to a live recompute only for profiles that predate the summary.
             const fst=statsFromProfile(p);
-            f.badges=fst.badges; f.sightings=fst.sightings; f.score=scoreOf(fst, achEarned(fst)); }
+            f.badges=(typeof p.badges==='number')?p.badges:fst.badges;
+            f.sightings=(typeof p.sightings==='number')?p.sightings:fst.sightings;
+            f.streak=(typeof p.streak==='number')?p.streak:fst.maxStreak;
+            f.ach=Array.isArray(p.ach)?p.ach:achEarned(fst).map(a=>a.id);
+            f.score=(typeof p.score==='number')?p.score:scoreOf(fst, achEarned(fst)); }
           renderFriends(); evalFriendStatus();
         }, err=>{});
       } else { f.username=base.username||f.username; }
@@ -8470,12 +8506,16 @@ function mergeSightLog(remote){
 // stat-based awards (Sky Detective, Contact, Curious, Planner, Perfect Pass, Social Butterfly,
 // Pen Pal) and their points silently vanish for anyone viewing you from another account.
 async function syncPublicSummary(){
-  if(!currentUser || !window.fb || !myProfile || !myProfile.unameLower) return;
+  if(!currentUser || !window.fb || !myProfile) return;
   const st=statsFromProfile(myProfile), earned=achEarned(st), score=scoreOf(st,earned);
+  const pub={ badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score };
   try{ const {db,doc,setDoc}=window.fb;
-    await setDoc(doc(db,'usernames',myProfile.unameLower),
-      {badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score,
-       listed:prefs.listed!==false, ranked:prefs.ranked!==false}, {merge:true});
+    // Denormalise the SAME numbers onto the profile doc, so a friend reading the profile sees the
+    // exact score the leaderboard shows — every view reads this one cached value, never a divergent
+    // live recompute.
+    await setDoc(doc(db,'profiles',currentUser.uid), pub, {merge:true});
+    if(myProfile.unameLower) await setDoc(doc(db,'usernames',myProfile.unameLower),
+      Object.assign({}, pub, {listed:prefs.listed!==false, ranked:prefs.ranked!==false}), {merge:true});
   }catch(e){ console.warn('public summary', e); }
 }
 async function commitSeen(list, days){
@@ -10514,10 +10554,21 @@ async function openFriendProfile(f){
 }
 function renderFriendProfile(p, f){
   const prof=p||{};
+  const hasFull=!!p;
   const uname=prof.username||f.username;
-  // Their profile doc carries the same shape as ours, so the identical maths applies.
-  const st=statsFromProfile(prof), earned=achEarned(st), score=scoreOf(st, earned);
-  const earnedSet=new Set(earned.map(a=>a.id));
+  const st=statsFromProfile(prof);                 // used for award progress bars, first sighting, objects list
+  // Headline score + earned awards come from the denormalised summary (profile doc if we could read
+  // it, else the leaderboard/friend row passed in). This makes the profile match the rankings exactly
+  // for everyone — including non-friends whose full profile we're not allowed to read (used to show 0).
+  const cacheScore = (hasFull && typeof prof.score==='number') ? prof.score : (typeof f.score==='number' ? f.score : null);
+  const cacheAch   = (hasFull && Array.isArray(prof.ach)) ? prof.ach : (Array.isArray(f.ach) ? f.ach : null);
+  const liveEarned = achEarned(st);
+  const earnedSet  = cacheAch ? new Set(cacheAch) : new Set(liveEarned.map(a=>a.id));
+  const score      = (cacheScore!=null) ? cacheScore : scoreOf(st, liveEarned);
+  const badges     = hasFull ? st.badges     : (typeof f.badges==='number'?f.badges:earnedSet.size);
+  const sightings  = hasFull ? st.sightings  : (f.sightings||0);
+  const streak     = hasFull ? st.maxStreak  : (f.streak||0);
+  const awardsN    = earnedSet.size;
   const seen=Array.isArray(prof.seen)?prof.seen:[];
   // Prefer their chosen icon; the profile doc carries it, the friends list is the fallback.
   const av = avatarHTML({icon: prof.icon || f.icon, photoURL: prof.photoURL || f.photoURL}, uname);
@@ -10538,17 +10589,17 @@ function renderFriendProfile(p, f){
       '<div class="hero-score">'+score+' <span>points</span></div></div>';
   $('ach-stats').innerHTML=
     '<button class="hs-btn" id="fp-objects" title="Objects seen">'+
-      '<b>'+st.badges+'</b><span>🛰 objects ›</span></button>'+
+      '<b>'+badges+'</b><span>🛰 objects ›</span></button>'+
     '<button class="hs-btn" id="fp-sightings" title="All sightings">'+
-      '<b>'+st.sightings+'</b><span>👁 sightings ›</span></button>'+
-    '<div class="hs-stat"><b>'+st.maxStreak+'</b><span>🔥 streak</span></div>'+
-    '<div class="hs-stat"><b>'+earned.length+'/'+ACH.length+'</b><span>🏆 awards</span></div>';
+      '<b>'+sightings+'</b><span>👁 sightings ›</span></button>'+
+    '<div class="hs-stat"><b>'+streak+'</b><span>🔥 streak</span></div>'+
+    '<div class="hs-stat"><b>'+awardsN+'/'+ACH.length+'</b><span>🏆 awards</span></div>';
   $('ach-grid').classList.remove('ach-mine');
   $('ach-grid').innerHTML=
     (firstTs?'<div class="hero-note">First sighting · <b>'+esc(firstName)+'</b> on '+fmtSeen(firstTs)+'</div>':'')+
-    (earned.length===ACH.length?'<div class="hero-note">🎉 Every award unlocked. Legend.</div>':'')+
+    (awardsN===ACH.length?'<div class="hero-note">🎉 Every award unlocked. Legend.</div>':'')+
     '<div class="fr-sub">Their awards</div>'+
-    achGridHTML(st, earnedSet, false);
+    achGridHTML(hasFull?st:null, earnedSet, false);
   const ob=$('fp-objects'); if(ob) ob.onclick=()=>showFriendObjects(uname, seen);
   const sg=$('fp-sightings'); if(sg) sg.onclick=()=>showFriendObjects(uname, seen);
   const lg=$('ach-log');
