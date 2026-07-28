@@ -1386,6 +1386,30 @@
   .cosmos-lbl{position:absolute;transform:translate(-50%,-160%);white-space:nowrap;
     font-size:11px;font-weight:600;letter-spacing:.4px;color:#dbe6ff;
     text-shadow:0 0 8px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.7);display:none}
+  /* Planet/Moon/Sun close-up card */
+  #cosmosmodal{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;padding:18px;
+    background:rgba(2,4,10,.82);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  #cosmosmodal.show{display:flex}
+  .cbody-card{position:relative;width:min(400px,100%);max-height:88vh;overflow-y:auto;text-align:center;
+    background:var(--panel-solid);border:1px solid var(--border);border-radius:20px;padding:26px 22px 22px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  #cbody-close{position:absolute;top:12px;right:14px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;border:1px solid var(--border);background:rgba(0,0,0,.35);color:#fff;cursor:pointer;font-size:15px}
+  #cbody-art{display:flex;align-items:center;justify-content:center;height:200px;margin-bottom:14px}
+  .cbody-planet{position:relative;width:164px;height:164px;border-radius:50%;
+    box-shadow:0 0 46px rgba(140,180,255,.28), inset -14px -14px 42px rgba(0,0,0,.55)}
+  .cbody-rings{position:absolute;left:50%;top:50%;width:260px;height:66px;
+    transform:translate(-50%,-50%) rotate(-18deg);border-radius:50%;
+    border:9px solid rgba(232,222,184,.5);border-top-color:transparent;border-bottom-color:transparent;
+    box-shadow:0 0 16px rgba(232,222,184,.22)}
+  #cbody-name{font-size:22px;font-weight:800;letter-spacing:.3px;color:var(--text);margin-bottom:12px}
+  #cbody-facts{list-style:none;margin:0;padding:0;text-align:left;display:flex;flex-direction:column;gap:9px}
+  #cbody-facts li{position:relative;padding:10px 12px 10px 34px;border-radius:12px;border:1px solid var(--border);
+    background:rgba(120,160,255,.06);font-size:13.5px;line-height:1.45;color:var(--text)}
+  #cbody-facts li::before{content:'✦';position:absolute;left:13px;top:10px;color:var(--accent)}
+  .ach-item.secret{opacity:.72}
+  .ach-item.secret .ach-ic{filter:none;opacity:.55}
+  .ach-item.secret .ach-txt b{color:var(--muted)}
   /* Take-the-tour button + onboarding */
   #tourbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
     padding:11px;border-radius:11px;border:1px solid var(--border);background:rgba(120,160,255,.08);
@@ -2383,6 +2407,15 @@
   </div>
 </div>
 
+<div id="cosmosmodal">
+  <div class="cbody-card">
+    <div id="cbody-close" aria-label="Close">✕</div>
+    <div id="cbody-art"></div>
+    <div id="cbody-name">—</div>
+    <ul id="cbody-facts"></ul>
+  </div>
+</div>
+
 <div id="settings" class="panel">
   <div class="sheet-handle"></div>
   <div class="x" onclick="closeWindow('settings')" title="Close">✕</div>
@@ -2942,7 +2975,7 @@
 </script>
 
 <script>
-const BUILD = 'v215';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v216';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4115,6 +4148,7 @@ function initSatPoints(){
       t.addEventListener('pointerup', e=>{
         if(moved) return;                                    // a drag, not a tap
         if(e.target.closest && e.target.closest('.sat,.launchpin,.sel-wrap')) return;  // marker has its own handler
+        if(pickCosmos(e)) return;                            // tapped the Sun/Moon/a planet in the space view
         pickSat(e, THREE, dom);
       });
     });
@@ -4158,17 +4192,41 @@ function pickSat(e, THREE, dom){
    *directions* from low-precision mean orbital longitudes, on tidy per-planet rings (distances are
    compressed so everything is visible at once). It's a stylised orrery, not a precise ephemeris. */
 let cosmos=null;
-// name, mean orbital radius (AU, for the ring), J2000 mean longitude (deg), period (days), colour, on-screen ring radius (scene units), point size
+// n, J2000 mean longitude (deg), period (days), colour (rgb 0-1), on-screen ring radius (scene units),
+// point size, orbit-ring flag, a CSS gradient for the close-up card, and a few facts.
 const COSMOS_BODIES=[
-  {n:'Mercury', L0:252.25, per:87.969,   c:[0.72,0.67,0.60], r:300,  sz:5},
-  {n:'Venus',   L0:181.98, per:224.701,  c:[0.90,0.80,0.55], r:430,  sz:7},
-  {n:'Mars',    L0:355.43, per:686.980,  c:[0.88,0.40,0.24], r:640,  sz:5.5},
-  {n:'Jupiter', L0:34.35,  per:4332.59,  c:[0.85,0.66,0.42], r:1050, sz:12},
-  {n:'Saturn',  L0:50.08,  per:10759.22, c:[0.90,0.82,0.58], r:1500, sz:10},
-  {n:'Uranus',  L0:314.06, per:30685.4,  c:[0.65,0.88,0.90], r:2050, sz:8},
-  {n:'Neptune', L0:304.35, per:60189.0,  c:[0.42,0.55,0.90], r:2550, sz:8},
+  {n:'Mercury', L0:252.25, per:87.969,   c:[0.72,0.67,0.60], r:300,  sz:5,  ring:true,
+    css:'radial-gradient(circle at 36% 30%, #cbb8a0, #6e5f4f 68%, #241f19)',
+    facts:['Closest planet to the Sun','A year is just 88 Earth days','No real atmosphere — 430°C days, −180°C nights','The smallest planet in the Solar System']},
+  {n:'Venus',   L0:181.98, per:224.701,  c:[0.90,0.80,0.55], r:430,  sz:7,  ring:true,
+    css:'radial-gradient(circle at 38% 32%, #f6e2a8, #c99a4e 70%, #6b4a1e)',
+    facts:['Hottest planet — a runaway greenhouse ~465°C','Spins backwards, and a day is longer than its year','Thick clouds of sulfuric acid','Brightest object in our sky after the Sun and Moon']},
+  {n:'Mars',    L0:355.43, per:686.980,  c:[0.88,0.40,0.24], r:640,  sz:5.5, ring:true,
+    css:'radial-gradient(circle at 37% 31%, #e8875a, #b24a2c 66%, #5c2114)',
+    facts:['The "Red Planet" — rusty iron-oxide dust','Home to Olympus Mons, the tallest volcano in the system','Has two tiny moons: Phobos and Deimos','A day is almost exactly as long as Earth’s']},
+  {n:'Jupiter', L0:34.35,  per:4332.59,  c:[0.85,0.66,0.42], r:1050, sz:12, ring:true,
+    css:'radial-gradient(circle at 40% 30%, #e7cfa6, #c79a63 55%, #8a6238 80%, #5a3d22)',
+    facts:['The largest planet — over 1,300 Earths would fit inside','The Great Red Spot is a storm bigger than Earth','Has at least 95 moons','Spins fastest of all — a day is under 10 hours']},
+  {n:'Saturn',  L0:50.08,  per:10759.22, c:[0.90,0.82,0.58], r:1500, sz:10, ring:true, rings:true,
+    css:'radial-gradient(circle at 40% 32%, #f0e2b2, #d3b878 60%, #9c7b45 85%)',
+    facts:['Famous for its dazzling ring system','Rings are mostly ice, from grains to house-sized chunks','So light it would float in water','Has over 140 known moons, including Titan']},
+  {n:'Uranus',  L0:314.06, per:30685.4,  c:[0.65,0.88,0.90], r:2050, sz:8,  ring:true, rings:true,
+    css:'radial-gradient(circle at 40% 35%, #d3f3f4, #90d3d8 65%, #4f8f97)',
+    facts:['An ice giant tipped over on its side','Rolls around the Sun at a ~98° tilt','Palest of the giants — methane gives its cyan hue','Coldest planetary atmosphere in the system']},
+  {n:'Neptune', L0:304.35, per:60189.0,  c:[0.42,0.55,0.90], r:2550, sz:8,  ring:true,
+    css:'radial-gradient(circle at 40% 34%, #7aa0f0, #3f5fc0 65%, #24357a)',
+    facts:['The most distant planet','Has the fastest winds — over 2,000 km/h','Was found by maths before it was ever seen','Takes 165 Earth years to orbit the Sun once']},
 ];
+const COSMOS_SUN={ n:'Sun', L0:null, per:1, c:[1.0,0.93,0.66], r:520, sz:34, ring:false,
+  css:'radial-gradient(circle at 50% 48%, #fff7d6, #ffd24a 52%, #ff8f22 82%, #ff5e00)',
+  facts:['The star at the heart of our Solar System','Holds 99.86% of the system’s mass','Surface ~5,500°C; core ~15 million°C','Its light takes about 8 minutes to reach Earth']};
+const COSMOS_MOON={ n:'Moon', r:205, sz:6.5, ring:true, c:[0.86,0.86,0.9],
+  css:'radial-gradient(circle at 38% 32%, #f4f4f0, #bdbdbb 58%, #6f6f72)',
+  facts:['Earth’s only natural satellite','About 384,000 km away — 1.3 light-seconds','Keeps the same face toward Earth always','Its pull drives the ocean tides']};
 const COSMOS_EARTH={L0:100.46, per:365.256};
+const COSMOS_TOTAL=COSMOS_BODIES.length+2;   // planets + Sun + Moon (what "Grand Tour" needs)
+// The Moon moves fast; a low-precision mean ecliptic longitude is plenty for its direction.
+function moonDir(){ const d=(Date.now()-946728000000)/86400000, L=(218.316+13.176396*d)*Math.PI/180; return norm2(Math.cos(L), Math.sin(L)); }
 function cosmicMat(THREE){
   return new THREE.ShaderMaterial({
     transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
@@ -4214,32 +4272,84 @@ function initCosmos(){
     sg.setAttribute('size',new THREE.BufferAttribute(ss,1));
     const starMat=cosmicMat(THREE);
     grp.add(new THREE.Points(sg, starMat));
-    // --- Sun + planets ---
-    const bodies=[{n:'Sun', L0:null, per:1, c:[1.0,0.93,0.66], r:520, sz:34}].concat(COSMOS_BODIES);
-    const M=bodies.length, pp=new Float32Array(M*3), pc=new Float32Array(M*3), ps=new Float32Array(M);
-    bodies.forEach((b,i)=>{
-      const [dx,dy]=cosmicDir(b.L0, b.per);
-      pp[i*3]=dx*b.r; pp[i*3+1]=0; pp[i*3+2]=dy*b.r;                // ecliptic laid on the XZ plane
-      pc[i*3]=b.c[0]; pc[i*3+1]=b.c[1]; pc[i*3+2]=b.c[2]; ps[i]=b.sz;
+    // --- Sun, Moon + planets (each becomes a tappable body with a fixed scene position) ---
+    const defs=[COSMOS_SUN, COSMOS_MOON].concat(COSMOS_BODIES);
+    const bodies=defs.map(def=>{
+      const [dx,dy]= def.n==='Moon' ? moonDir() : cosmicDir(def.L0, def.per);
+      return { n:def.n, c:def.c, sz:def.sz, r:def.r, ring:!!def.ring, rings:!!def.rings, css:def.css, facts:def.facts,
+        pos:[dx*def.r, 0, dy*def.r] };                             // ecliptic laid on the XZ plane
     });
+    const M=bodies.length, pp=new Float32Array(M*3), pc=new Float32Array(M*3), ps=new Float32Array(M);
+    bodies.forEach((b,i)=>{ pp[i*3]=b.pos[0]; pp[i*3+1]=b.pos[1]; pp[i*3+2]=b.pos[2];
+      pc[i*3]=b.c[0]; pc[i*3+1]=b.c[1]; pc[i*3+2]=b.c[2]; ps[i]=b.sz; });
     const pg=new THREE.BufferGeometry();
     pg.setAttribute('position',new THREE.BufferAttribute(pp,3));
     pg.setAttribute('color',new THREE.BufferAttribute(pc,3));
     pg.setAttribute('size',new THREE.BufferAttribute(ps,1));
     const planetMat=cosmicMat(THREE);
     grp.add(new THREE.Points(pg, planetMat));
+    // --- Simple dotted orbit rings (drawn as faint point circles — same proven shader path) ---
+    const ringDefs=bodies.filter(b=>b.ring);
+    const RP=120, RN=ringDefs.length*RP, rp=new Float32Array(RN*3), rc=new Float32Array(RN*3), rs=new Float32Array(RN);
+    let ri=0;
+    for(const b of ringDefs){ for(let j=0;j<RP;j++){ const a=j/RP*Math.PI*2;
+      rp[ri*3]=Math.cos(a)*b.r; rp[ri*3+1]=0; rp[ri*3+2]=Math.sin(a)*b.r;
+      rc[ri*3]=0.45; rc[ri*3+1]=0.55; rc[ri*3+2]=0.75; rs[ri]=1.15; ri++; } }
+    const rg=new THREE.BufferGeometry();
+    rg.setAttribute('position',new THREE.BufferAttribute(rp,3));
+    rg.setAttribute('color',new THREE.BufferAttribute(rc,3));
+    rg.setAttribute('size',new THREE.BufferAttribute(rs,1));
+    const ringMat=cosmicMat(THREE);
+    grp.add(new THREE.Points(rg, ringMat));
     world.scene().add(grp);
     // --- Labels (projected HTML) ---
     const wrap=document.createElement('div'); wrap.id='cosmos-labels'; document.body.appendChild(wrap);
     const labels=bodies.map(b=>{ const el=document.createElement('span'); el.className='cosmos-lbl'; el.textContent=b.n;
-      wrap.appendChild(el); return {el, pos:[pp[bodies.indexOf(b)*3], 0, pp[bodies.indexOf(b)*3+2]]}; });
-    // store proper positions
-    labels.forEach((L,i)=>{ L.pos=[pp[i*3], pp[i*3+1], pp[i*3+2]]; });
-    cosmos={ grp, starMat, planetMat, labels, wrap, THREE, v:new THREE.Vector3() };
+      wrap.appendChild(el); return {el, pos:b.pos}; });
+    cosmos={ grp, starMat, planetMat, ringMat, labels, bodies, wrap, THREE, v:new THREE.Vector3() };
     // Push the camera far plane out so the star sphere doesn't get clipped.
     try{ const cam=world.camera(); if(cam && cam.far < COSMOS_STAR_R*2){ cam.far=COSMOS_STAR_R*2.2; cam.updateProjectionMatrix(); } }catch(e){}
     updateCosmos();
   }catch(e){ console.warn('cosmos init', e); cosmos=null; }
+}
+// Tap a Sun/Moon/planet in the space view → open its close-up card. Returns true if one was hit.
+function pickCosmos(e){
+  if(!cosmos) return false;
+  let alt; try{ alt=world.pointOfView().altitude; }catch(_){ return false; }
+  if(alt < COSMIC_START_ALT+0.5) return false;                     // only once we're actually out in space
+  const cam=world.camera(), rect=world.renderer().domElement.getBoundingClientRect();
+  const px=e.clientX-rect.left, py=e.clientY-rect.top, v=cosmos.v;
+  let best=-1, bestD=44;                                            // finger-sized hit radius (px)
+  cosmos.bodies.forEach((b,i)=>{
+    v.set(b.pos[0],b.pos[1],b.pos[2]).project(cam);
+    if(v.z>1) return;
+    const sx=(v.x*0.5+0.5)*rect.width, sy=(-v.y*0.5+0.5)*rect.height;
+    const d=Math.hypot(sx-px, sy-py); if(d<bestD){ bestD=d; best=i; }
+  });
+  if(best>=0){ openCosmosBody(cosmos.bodies[best]); return true; }
+  return false;
+}
+// The close-up card: a big rendered body + a few facts. Also records the visit for the Grand Tour egg.
+function openCosmosBody(b){
+  const m=$('cosmosmodal'); if(!m) return;
+  SFX.select(); Haptics.select();
+  const ringHTML = b.rings ? '<div class="cbody-rings"></div>' : '';
+  $('cbody-art').innerHTML='<div class="cbody-planet" style="background:'+b.css+'">'+ringHTML+'</div>';
+  $('cbody-name').textContent=b.n;
+  $('cbody-facts').innerHTML=(b.facts||[]).map(f=>'<li>'+esc(f)+'</li>').join('');
+  m.classList.add('show');
+  markCosmosVisited(b.n);
+}
+// Record which bodies you've opened; unlocks the "Grand Tour" easter egg at the full set.
+async function markCosmosVisited(name){
+  if(!currentUser || !window.fb || !myProfile) return;             // guests can browse, but eggs need an account
+  const cur=Object.assign({}, myProfile.stats||{});
+  const set=new Set(Array.isArray(cur.cosmosSeen)?cur.cosmosSeen:[]);
+  if(set.has(name)) return;
+  set.add(name); cur.cosmosSeen=[...set]; myProfile.stats=cur;
+  try{ const {db,doc,setDoc}=window.fb; await setDoc(doc(db,'profiles',currentUser.uid),{stats:cur},{merge:true});
+    await syncPublicSummary(); }catch(e){}
+  try{ checkNewAchievements(); }catch(e){}
 }
 // Fade the cosmos in/out with zoom, keep the far plane open, and place the body labels.
 function updateCosmos(){
@@ -4248,6 +4358,7 @@ function updateCosmos(){
   const k=Math.max(0, Math.min(1, (alt-COSMIC_START_ALT)/(COSMIC_FULL_ALT-COSMIC_START_ALT)));
   cosmos.starMat.uniforms.uOpacity.value = k*0.9;
   cosmos.planetMat.uniforms.uOpacity.value = k;
+  if(cosmos.ringMat) cosmos.ringMat.uniforms.uOpacity.value = k*0.5;
   if(satPoints) satPoints.visible = k < 0.6;                       // hide the satellite swarm once we're out in space
   try{ const cam=world.camera(); if(cam && cam.far < COSMOS_STAR_R*2){ cam.far=COSMOS_STAR_R*2.2; cam.updateProjectionMatrix(); } }catch(e){}
   // Labels: only when space is visible; project each body to screen.
@@ -8389,6 +8500,7 @@ const ACH_CATS=[
   ['timing',  '🌙 Timing & the sky'],
   ['rare',    '⭐ Rare finds'],
   ['social',  '👥 Social'],
+  ['egg',     '🥚 Easter eggs'],
 ];
 const ACH=[
   /* --- Getting started --- */
@@ -8445,10 +8557,19 @@ const ACH=[
   /* --- Social --- */
   {id:'fr5',   cat:'social', ic:'👥', n:'Social Butterfly',d:'Have 5 friends',           p:20, t:s=>s.friends>=5, pr:s=>[s.friends,5]},
   {id:'chat1', cat:'social', ic:'💬', n:'Pen Pal',        d:'Chat back-and-forth with a friend', p:15, t:s=>s.chat>=1},
+  // Easter eggs are hidden until earned (see achItemHTML) — no hints, no progress bar.
+  {id:'egg-tour', cat:'egg', ic:'🪐', n:'Grand Tour', d:'Pinch out to space and open the Sun, the Moon and every planet', p:30, secret:true, t:s=>s.cosmicVisited>=COSMOS_TOTAL},
 ];
 // Progress for the locked ones: "3 / 5 · 2 to go". Awards without an explicit `pr`
 // are single-shot, so there's nothing meaningful to count towards.
 function achItemHTML(a, on, st, tag){
+  // Secret (easter-egg) awards stay a mystery until earned — no name, no description, no progress.
+  if(a.secret && !on){
+    return '<div class="ach-item secret"'+(tag?(' data-ach="'+a.id+'"'):'')+'>'+
+      '<div class="ach-ic">❓</div>'+
+      '<div class="ach-txt"><b>Hidden</b><span>A secret award — discover it yourself.</span></div>'+
+      '<span class="ach-pts locked">🔒 +'+a.p+'</span></div>';
+  }
   const pr = on ? null : achProgress(a, st);
   let det=''; if(!on && a.detail){ try{ det=a.detail(st)||''; }catch(e){} }
   return '<div class="ach-item'+(on?' on':'')+'"'+(tag?(' data-ach="'+a.id+'"'):'')+'>'+
@@ -8558,6 +8679,7 @@ function statsFromProfile(p){
     witching, leap, blueMoon, meteor, hubble, vanguard, dirs:dirSet.size,
     orbSeen:[...orb], maxObj:maxName, dirSeen:[...dirSet], trainSeen:x.trainSeen||0, chat:x.chat||0,
     explored:(Array.isArray(x.explored)?x.explored.length:0),
+    cosmicVisited:(Array.isArray(x.cosmosSeen)?x.cosmosSeen.length:0),
     granted:new Set(Array.isArray(p&&p.granted)?p.granted:[]),
     revoked:new Set(Array.isArray(p&&p.revoked)?p.revoked:[]) };
 }
@@ -10057,6 +10179,11 @@ function showUapReports(){
       '</div>'; }).join(''));
 }
 function initListModal(){
+  const cm=$('cosmosmodal'); if(cm){
+    const close=()=>cm.classList.remove('show');
+    const cc=$('cbody-close'); if(cc) cc.onclick=close;
+    cm.addEventListener('click', e=>{ if(e.target===cm) close(); });   // tap the backdrop to dismiss
+  }
   const c=$('lm-close'); if(c) c.onclick=()=>$('listmodal').classList.remove('show');
   const m=$('listmodal'); if(m) m.addEventListener('click', e=>{ if(e.target===m) m.classList.remove('show'); });
 }
