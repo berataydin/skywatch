@@ -2874,7 +2874,7 @@
 </script>
 
 <script>
-const BUILD = 'v202';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v203';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -5608,7 +5608,7 @@ function arComputeSky(){
     if(!pv || !pv.position) continue;
     let la; try{ la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, g)); }catch(e){ continue; }
     const el=la.elevation*R2D; if(el < -2) continue;                 // keep just-below-horizon for smooth entry
-    out.push({ name:shortName(s.name), az:la.azimuth*R2D, el, group:s.group, target:!!(arTarget && s.id===arTarget.id) });
+    out.push({ id:s.id, name:shortName(s.name), az:la.azimuth*R2D, el, group:s.group, target:!!(arTarget && s.id===arTarget.id) });
   }
   arSky=out;
 }
@@ -5676,6 +5676,21 @@ function arSetArrows(dAz, dEl){
   const set=(cls, active)=>{ const el=box.querySelector('.ar-arr.'+cls); if(el) el.classList.toggle('on', !!active); };
   set('right', dAz>TH); set('left', dAz<-TH);                // + azimuth delta → turn right
   set('up', dEl>TH);    set('down', dEl<-TH);                // + elevation delta → tilt up
+}
+// Map a tap on the AR view back to the nearest drawn satellite (finger-sized hit radius).
+function arHitTest(px, py){
+  if(arHeadS==null || arPitchS==null) return null;
+  const cv=$('ar-canvas'), W=(cv&&cv._W)||innerWidth, H=(cv&&cv._H)||innerHeight;
+  const hw=W/2, hh=H/2, FOV=42;
+  let bestId=null, bestD=46;                                  // px hit radius
+  for(const o of arSky){
+    if(o.el<0) continue;
+    const dAz=((o.az-arHeadS+540)%360)-180, dEl=o.el-arPitchS;
+    if(Math.abs(dAz)>FOV+12 || Math.abs(dEl)>FOV+12) continue;
+    const x=hw+dAz/FOV*hw, y=hh-dEl/FOV*hh, d=Math.hypot(px-x, py-y);
+    if(d<bestD){ bestD=d; bestId=o.id; }
+  }
+  return bestId;
 }
 /* ---------- Topbar compass ----------
    Shares the AR sky-finder's orientation plumbing, but runs independently so the
@@ -5778,7 +5793,7 @@ function arTick(){
     tgt.style.opacity=0; arHideArrows();
     const up=arSky.reduce((n,o)=>n+(o.el>=0?1:0),0);
     if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; }
-    else { guide.textContent=up+' overhead'; sub.textContent='Facing '+azCompass(arHeadS)+' '+Math.round(arHeadS)+'° · dots are satellites above you'; }
+    else { guide.textContent=up+' overhead'; sub.textContent='Facing '+azCompass(arHeadS)+' '+Math.round(arHeadS)+'° · tap a dot to open it'; }
   }
   arRAF=requestAnimationFrame(arTick);
 }
@@ -5793,6 +5808,16 @@ function initAR(){
   }
   window.addEventListener('resize', ()=>{ if(arActive) arSetupCanvas(); });   // orientation change too
   document.addEventListener('keydown', e=>{ if(arActive && e.key==='Escape') closeAR(); });
+  // Tap a satellite in the AR view → open its detail card (where you can log a sighting).
+  const view=$('arview');
+  if(view) view.addEventListener('click', e=>{
+    if(!arActive) return;
+    if(e.target && e.target.closest && e.target.closest('#ar-close')) return;   // close button handles itself
+    const id=arHitTest(e.clientX, e.clientY);
+    if(!id) return;
+    const s=SATS.find(x=>x.id===id);
+    if(s){ SFX.tap(); Haptics.tap(); closeAR(); selectSat(s); }
+  });
 }
 
 /* ---------- Deep link from a clicked notification ---------- */
