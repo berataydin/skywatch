@@ -2979,7 +2979,7 @@
 </script>
 
 <script>
-const BUILD = 'v218';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v219';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -8593,6 +8593,7 @@ const ACH=[
   {id:'dawn',  cat:'timing', ic:'🌅', n:'Dawn Patrol',    d:'Log a sighting between 4–6am',  p:15, t:s=>s.dawn>=1},
   {id:'witch', cat:'timing', ic:'🕛', n:'Witching Hour',  d:'Log a sighting at exactly midnight', p:30, t:s=>s.witching>=1},
   {id:'leap',  cat:'timing', ic:'🐸', n:'Leap of Faith',  d:'Log a sighting on Feb 29',  p:40, t:s=>s.leap>=1},
+  {id:'bluem', cat:'timing', ic:'🔵', n:'Blue Moon',      d:'Log a sighting on a blue moon', p:30, t:s=>s.blueMoon>=1},
   {id:'yuri',  cat:'timing', ic:'🚀', n:'Yuri’s Night',   d:'Log a sighting on Apr 12 — Gagarin, the first human in space', p:25, t:s=>s.yuri>=1},
   {id:'apollo',cat:'timing', ic:'🌕', n:'One Small Step',  d:'Log a sighting on Jul 20 — the Apollo 11 Moon landing', p:25, t:s=>s.apollo>=1},
   {id:'meteor',cat:'timing', ic:'☄️', n:'Shooting Gallery',d:'Log a sighting on a meteor-shower peak', p:20, t:s=>s.meteor>=1},
@@ -8606,7 +8607,6 @@ const ACH=[
   // Easter eggs are hidden until earned (see achItemHTML) — no hints, no progress bar.
   {id:'egg-tour', cat:'egg', ic:'🪐', n:'Grand Tour', d:'Pinch out to space and open the Sun, the Moon and every planet', p:30, secret:true, t:s=>s.cosmicVisited>=COSMOS_TOTAL},
   {id:'egg-first',cat:'egg', ic:'🛸', n:'First Contact', d:'Mark an object during a CE5 session and check it against the ISS', p:30, secret:true, t:s=>s.firstContact>=1},
-  {id:'bluem',    cat:'egg', ic:'🔵', n:'Blue Moon', d:'Log a sighting on the night of a blue moon', p:30, secret:true, t:s=>s.blueMoon>=1},
   {id:'egg-origin',cat:'egg', ic:'📖', n:'Origin Story', d:'Read how SkyWatch came to be (Settings)', p:15, secret:true, t:s=>s.originRead>=1},
 ];
 // Progress for the locked ones: "3 / 5 · 2 to go". Awards without an explicit `pr`
