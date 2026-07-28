@@ -484,6 +484,18 @@
   @keyframes mb-chat-shake{0%,84%,100%{transform:rotate(0)}
     86%{transform:rotate(-17deg)}88%{transform:rotate(15deg)}90%{transform:rotate(-11deg)}92%{transform:rotate(7deg)}94%{transform:rotate(-3deg)}}
   @media (prefers-reduced-motion: reduce){ .mb-chatbadge.show{animation:none} }
+  /* Neon-treat the Chat tab so it stands out */
+  #frt-chat{color:rgb(150,200,255);border:1px solid rgba(150,200,255,.5);
+    box-shadow:0 0 0 1px rgba(150,200,255,.28),0 0 14px rgba(150,200,255,.22)}
+  #frt-chat.on{background:rgba(150,200,255,.18);color:rgb(190,222,255)}
+  /* On mobile the bottom nav floats above the keyboard — pin the composer just above the nav. */
+  @media (max-width:820px){
+    #friends.tab-chat .chat-inputbar{position:fixed;left:14px;right:14px;z-index:40;margin:0;
+      bottom:calc(env(safe-area-inset-bottom) + var(--bar-h,64px) + 8px);
+      padding:8px 6px;border:1px solid var(--border);border-radius:14px;
+      background:var(--panel);box-shadow:0 -6px 20px rgba(0,0,0,.45)}
+    #friends.tab-chat #chat-msgs{padding-bottom:64px}
+  }
   #bd-pane-rank{display:none}
   #board.tab-rank #bd-pane-you{display:none}
   #board.tab-rank #bd-pane-rank{display:block}
@@ -2839,7 +2851,7 @@
 </script>
 
 <script>
-const BUILD = 'v195';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v196';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -9559,6 +9571,7 @@ function startChatWatch(){
       if(!other || !c.lastFrom || c.lastFrom===currentUser.uid) return;
       if((c.lastTs||0) <= chatReadTs(ch.doc.id)) return;                 // already seen on this device
       if(!chatListReady) return;                                          // skip the initial backlog
+      try{ SFX.sighting(); Haptics.reaction(); }catch(e){}               // "received" cue (distinct from sent)
       if(chatViewingUid(other)){ markChatRead(ch.doc.id); }              // in-focus → the thread listener shows it
       else {
         const f=friends.find(x=>x.uid===other);
@@ -9638,7 +9651,7 @@ async function sendChatMessage(){
     await setDoc(doc(db,'chats',cid), { members:[currentUser.uid, uid].sort(), lastFrom:currentUser.uid, lastText:text.slice(0,500), lastTs:now }, {merge:true});
     await addDoc(collection(db,'chats',cid,'messages'), { from:currentUser.uid, text:text.slice(0,1000), ts:now });
     markChatRead(cid);
-    try{ SFX.tap(); }catch(e){}
+    try{ SFX.select(); Haptics.tap(); }catch(e){}          // "sent" cue
   }catch(e){ console.error('chat send', e); showErr('Could not send: '+(e.code||e.message||e)); ta.value=text; chatAutoGrow(); }
 }
 function chatAutoGrow(){ const ta=$('chat-text'); if(!ta) return; ta.style.height='auto'; ta.style.height=Math.min(120, ta.scrollHeight)+'px'; }
