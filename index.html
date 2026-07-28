@@ -2851,7 +2851,7 @@
 </script>
 
 <script>
-const BUILD = 'v199';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v200';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -5534,7 +5534,7 @@ function openArSky(){ startAR(null); }                            // "point & id
 function startAR(target){
   markExplored('ar');
   if(!observer){ showErr('Enable your location (⌖ button) to use the sky view.'); return; }
-  arTarget=target||null; arHeading=null; arPitch=null;
+  arTarget=target||null; arHeading=null; arPitch=null; arAbsSeen=false;
   arHeadS=null; arPitchS=null; arAz=null; arEl=null; arLastCalc=0; arOnTarget=false;
   arSky=[]; arSkyCalc=0;
   $('ar-title').textContent = arTarget ? arTarget.name : '🔭 Sky view';
@@ -5613,10 +5613,17 @@ function arDrawSky(){
     ctx.fillText(o.name, x+(t?12:9), y);
   }
 }
+let arAbsSeen=false;   // true once a compass-referenced (absolute) heading has arrived
 function onOrient(e){
-  if(typeof e.webkitCompassHeading==='number') arHeading=e.webkitCompassHeading;
-  else if(typeof e.alpha==='number') arHeading=(360-e.alpha+360)%360;
-  if(typeof e.beta==='number') arPitch=e.beta-90;   // ≈ elevation the back camera points at (portrait)
+  if(typeof e.webkitCompassHeading==='number'){ arHeading=e.webkitCompassHeading; arAbsSeen=true; }
+  else if(typeof e.alpha==='number' && (e.type==='deviceorientationabsolute' || e.absolute===true)){
+    arHeading=(360-e.alpha+360)%360; arAbsSeen=true;   // trust only absolute (true-north) alpha
+  } else if(typeof e.alpha==='number' && !arAbsSeen){
+    arHeading=(360-e.alpha+360)%360;                   // no absolute feed on this device — relative as a last resort
+  }
+  // A plain (relative) deviceorientation event while an absolute feed exists is ignored —
+  // mixing the two frames is what made Android's heading swing wildly.
+  if(typeof e.beta==='number') arPitch=e.beta-90;      // portrait pitch ≈ where the back camera points
 }
 function startOrient(){
   const attach=()=>{ arOrient=onOrient;
@@ -5627,6 +5634,15 @@ function startOrient(){
   } else attach();
 }
 function stopOrient(){ if(arOrient){ window.removeEventListener('deviceorientationabsolute', arOrient, true); window.removeEventListener('deviceorientation', arOrient, true); arOrient=null; } }
+// Adaptive heading smoother for AR: a deadband kills sub-degree magnetometer jitter, and the
+// easing is heavy for tiny moves (steady when you hold still) but light for real turns (still snappy).
+function arSmoothHeading(prev, next){
+  if(prev==null || !isFinite(prev)) return next;
+  const d=((next-prev+540)%360)-180, ad=Math.abs(d);   // shortest signed delta
+  if(ad<0.8) return prev;                                // ignore noise floor
+  const k = ad<6 ? 0.06 : ad<20 ? 0.18 : 0.5;
+  return (prev + d*k + 360) % 360;
+}
 /* ---------- Topbar compass ----------
    Shares the AR sky-finder's orientation plumbing, but runs independently so the
    heading is there whenever you need to line up a pass bearing. */
@@ -5690,8 +5706,9 @@ function arTick(){
   // Whole-sky look angles (throttled ~4×/s), then the per-frame overlay paint.
   if(now-arSkyCalc>250){ arSkyCalc=now; arComputeSky(); }
   // Low-pass the noisy sensor stream so markers glide instead of twitching.
-  if(arHeading!=null) arHeadS = smoothAngle(arHeadS, arHeading, 0.16);
-  if(arPitch!=null)   arPitchS = (arPitchS==null) ? arPitch : arPitchS + (arPitch-arPitchS)*0.16;
+  if(arHeading!=null) arHeadS = arSmoothHeading(arHeadS, arHeading);
+  if(arPitch!=null){ if(arPitchS==null) arPitchS=arPitch;
+    else { const dp=arPitch-arPitchS; if(Math.abs(dp)>0.4) arPitchS += dp*(Math.abs(dp)<4?0.12:0.4); } }
   arDrawSky();
   if(arTarget){
     // Single-target guidance: recompute this one's angles ~5×/s and steer the reticle to it.
