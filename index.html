@@ -506,6 +506,8 @@
   .hero-since{font-size:11.5px;color:var(--muted);margin-top:2px}
   .hero-score{margin-top:8px;font-size:26px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
   .hero-score span{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .score-break{margin-top:5px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .score-break b{color:var(--text);font-weight:700}
   .hero-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
   .hero-stats div{text-align:center;background:rgba(120,160,255,.06);border:1px solid var(--border);border-radius:10px;padding:8px 2px}
   .hero-stats b{display:block;font-size:16px;color:var(--text)}
@@ -1486,7 +1488,7 @@
                 0 0 48px rgba(var(--neon-w),.14), 0 6px 20px rgba(0,0,0,.5);
   }
   /* --- Base: every action button in the app --- */
-  .idf-go,.idf-uap,.usr-btn,.fr-addbtn,#tourbtn,#sharebtn,#snapbtn,#d-ar,
+  .idf-go,.idf-uap,.usr-btn,.fr-addbtn,#tourbtn,#sharebtn,#snapbtn,#originbtn,#d-ar,
   #accountmenu .act,.ob-btns button,.loc-row button,.usr-row button,
   #uap-save,#loc-find,.nt-rank,.loc-hit{
     min-height:var(--ctl-h);
@@ -1499,7 +1501,7 @@
     transition:box-shadow .18s,border-color .18s,background .18s,transform .1s;
   }
   .idf-go:hover,.idf-uap:hover,.usr-btn:hover,.fr-addbtn:hover,#tourbtn:hover,#sharebtn:hover,
-  #snapbtn:hover,#d-ar:hover,#accountmenu .act:hover,.ob-btns button:hover,
+  #snapbtn:hover,#originbtn:hover,#d-ar:hover,#accountmenu .act:hover,.ob-btns button:hover,
   #uap-save:hover,#loc-find:hover,.nt-rank:hover,.loc-hit:hover{
     box-shadow:var(--neon-hot);
     border-color:rgba(var(--neon-c),.55);
@@ -1827,14 +1829,14 @@
   #accountmenu,#usermodal{--neon-c:90,209,255; --neon-w:90,209,255}
   /* Text and icons follow the section hue too, not just the glow */
   #controls .idf-uap,#overhead .idf-uap,#friends .idf-uap,#feed .idf-uap,#board .idf-uap,#settings .idf-uap,
-  #tourbtn,#sharebtn,#snapbtn,#d-ar{color:rgb(var(--neon-c))}
+  #tourbtn,#sharebtn,#snapbtn,#originbtn,#d-ar{color:rgb(var(--neon-c))}
   .idf-go,.fr-addbtn{color:rgb(var(--neon-w));border:1px solid rgba(var(--neon-w),.5);
     background:linear-gradient(180deg,rgba(var(--neon-w),.22),rgba(var(--neon-w),.1));
     text-shadow:0 0 14px rgba(var(--neon-w),.55);box-shadow:var(--neon-warm)}
   .idf-go:hover,.fr-addbtn:hover{color:rgb(var(--neon-w));
     background:linear-gradient(180deg,rgba(var(--neon-w),.34),rgba(var(--neon-w),.16));
     border-color:rgba(var(--neon-w),.85)}
-  .idf-uap:hover,#tourbtn:hover,#sharebtn:hover,#snapbtn:hover{color:rgb(var(--neon-c))}
+  .idf-uap:hover,#tourbtn:hover,#sharebtn:hover,#snapbtn:hover,#originbtn:hover{color:rgb(var(--neon-c))}
   .idf-chips button.on,.fr-tabs button.on,.lb-sort.on,.seg button.sel{color:rgb(var(--neon-c))}
   /* --- Settings: every control on one language --- */
   .seg{background:rgba(0,0,0,.28);border:1px solid var(--border);border-radius:13px;padding:3px;gap:3px;
@@ -2601,8 +2603,8 @@
   <div class="note" id="stg-note"></div>
   <button id="sharebtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7 15.7 6.3M8.3 13.3l7.4 4.4"/></svg> Share this app</button>
   <button id="tourbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.7-.9 1.4v.3"/><path d="M12 16.5h.01"/></svg> Take the tour</button>
-  <button id="originbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> The story behind SkyWatch</button>
   <button id="snapbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg> Share a snapshot</button>
+  <button id="originbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> The story behind SkyWatch</button>
   <div class="stg-ver" id="stg-ver">—</div>
   </div><!-- /stg-pane-main -->
   <div id="stg-pane-dev"><div id="dev-body"></div>
@@ -2979,7 +2981,7 @@
 </script>
 
 <script>
-const BUILD = 'v219';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v221';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4386,11 +4388,11 @@ async function bumpFlag(key){
 // The origin story — why SkyWatch exists. Reading it unlocks a secret award.
 function showOriginStory(){
   const html='<div class="origin-story">'+
-    '<p>One night I was outside doing a CE5 session — the practice where you sit under the stars, quiet your mind, and invite contact. A steady light slid across the sky, smooth and certain, no blinking. My heart jumped. <em>This was it.</em></p>'+
-    '<p>I grabbed my phone to figure out what I was looking at… and no app could tell me. Star maps, satellite trackers — nothing gave me a straight answer in the moment. So instead of letting the mystery go, I started building my own tracker. A few obsessive weeks later, it worked.</p>'+
-    '<p>The very first thing it did was identify my "contact." It was the <b>International Space Station</b> — the single most-tracked object in the sky, passing over on a public timetable, with a crew of humans waving back from ~400&nbsp;km up. My first logged sighting is literally "ISS (ZARYA)."</p>'+
-    '<p>So this whole app is, in a way, a monument to being beautifully, enthusiastically wrong. But here’s the thing: looking up still feels like contact. Whether it’s the ISS, a Starlink train, a meteor, or something you genuinely can’t explain — SkyWatch exists to help you notice, identify, and keep a little logbook of the sky above you.</p>'+
-    '<p class="origin-sign">Clear skies. 🛰️</p>'+
+    '<p>Picture me: outside at night, doing a CE5 session — the one where you sit under the stars, quiet your mind, and politely invite aliens to say hi. A steady light glides across the sky. No blinking. Smooth. Purposeful. My brain immediately goes: <em>first contact, baby.</em> I have made friends with the cosmos. I am the chosen liaison for Earth.</p>'+
+    '<p>Naturally I grab my phone to document my historic achievement. No app can tell me what it is. Rather than google for ten more minutes like a normal person, I decide the only reasonable response is to spend several weeks building an entire satellite tracker from scratch. For science. For humanity. For the aliens I definitely met.</p>'+
+    '<p>The app finally works. Its very first act — its <em>debut</em> — is to look at my profound cosmic encounter and calmly inform me it was the <b>International Space Station</b>. The most-tracked object in the sky. On a published timetable. Visible to roughly everyone. My literal first logged sighting is "ISS (ZARYA)," a.k.a. "a bus full of humans I could have looked up in two seconds."</p>'+
+    '<p>So yes: SkyWatch is an elaborate monument to me being confidently, enthusiastically wrong. My profile picture is still a UFO out of pure denial. But honestly? Looking up and going "ooh, what’s <em>that</em>" never gets old — even when the answer is gently humbling. Starlink train, meteor, the ISS photobombing your enlightenment, or something you genuinely can’t explain — this app is here to help you notice it, name it, and keep a little logbook of your sky.</p>'+
+    '<p class="origin-sign">Keep looking up. (The aliens are shy. The ISS is not.) 🛰️</p>'+
   '</div>';
   openList('The story behind SkyWatch', html);
   bumpFlag('originRead');                                            // reading it unlocks the Origin Story egg
@@ -8771,6 +8773,11 @@ function azCompass8(a){
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round((((a%360)+360)%360)/45)%8];
 }
 function scoreOf(st, earned){ return st.sightings + st.badges*2 + earned.reduce((x,a)=>x+a.p,0); }
+// How the score is built: award points + 2 per object + 1 per sighting. Shown under the points total.
+function scoreBreakdownHTML(sightings, badges, score){
+  const sPts=sightings||0, oPts=(badges||0)*2, aPts=Math.max(0,(score||0)-sPts-oPts);
+  return '<div class="score-break"><b>'+aPts+'</b> awards + <b>'+oPts+'</b> objects + <b>'+sPts+'</b> sightings</div>';
+}
 
 /* ---------- Private sighting log (this device + your own account doc) ----------
    Stored in users/{uid} (owner-only per the security rules) and mirrored to
@@ -9034,7 +9041,8 @@ function renderHero(){
     '<div class="hero-top"><div class="hero-av">'+ini+'</div>'+
       '<div class="hero-name">@'+uname+'</div>'+
       (since?'<div class="hero-since">Member since '+since+'</div>':'')+
-      '<div class="hero-score">'+score+' <span>points</span></div></div>'+
+      '<div class="hero-score">'+score+' <span>points</span></div>'+
+      scoreBreakdownHTML(st.sightings, st.badges, score)+'</div>'+
     '<div class="hero-stats">'+
       '<button class="hs-btn" id="hs-objects" title="Objects seen">'+
         '<b>'+st.badges+'</b><span>🛰 objects ›</span></button>'+
@@ -10910,7 +10918,8 @@ function renderFriendProfile(p, f){
     '<div class="hero-top"><div class="hero-av">'+av+'</div>'+
       '<div class="hero-name">@'+esc(uname)+'</div>'+
       (since?'<div class="hero-since">Member since '+since+'</div>':'')+
-      '<div class="hero-score">'+score+' <span>points</span></div></div>';
+      '<div class="hero-score">'+score+' <span>points</span></div>'+
+      scoreBreakdownHTML(sightings, badges, score)+'</div>';
   $('ach-stats').innerHTML=
     '<button class="hs-btn" id="fp-objects" title="Objects seen">'+
       '<b>'+badges+'</b><span>🛰 objects ›</span></button>'+
