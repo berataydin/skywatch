@@ -2937,7 +2937,7 @@
 </script>
 
 <script>
-const BUILD = 'v213';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v214';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7543,10 +7543,22 @@ async function admAction(a){
       if(!ach) return;
       if(!confirm((cmd==='u-grant'?'Grant "':'Revoke "')+ach.n+'" for @'+uname+'?')) return;
       await admSnapshot(uid, cmd);
-      const cur=Array.isArray(admLookup.profile&&admLookup.profile.granted)?admLookup.profile.granted.slice():[];
-      const next = cmd==='u-grant' ? [...new Set([...cur, id])] : cur.filter(x=>x!==id);
-      await setDoc(doc(db,'profiles',uid), {granted:next}, {merge:true});
-      admLookup.profile=Object.assign({}, admLookup.profile, {granted:next});
+      const prof=admLookup.profile||{};
+      const g=new Set(Array.isArray(prof.granted)?prof.granted:[]);
+      const r=new Set(Array.isArray(prof.revoked)?prof.revoked:[]);
+      // Grant = force on (and lift any prior revoke). Revoke = force off, suppressing the award even
+      // if its trigger still fires (which is why removing it from `granted` alone did nothing).
+      if(cmd==='u-grant'){ g.add(id); r.delete(id); } else { g.delete(id); r.add(id); }
+      const granted=[...g], revoked=[...r];
+      await setDoc(doc(db,'profiles',uid), {granted, revoked}, {merge:true});
+      admLookup.profile=Object.assign({}, prof, {granted, revoked});
+      // Recompute their public summary so the rankings + profile reflect the change right away.
+      try{ const st=statsFromProfile(admLookup.profile), earned=achEarned(st);
+        const pub={ badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score:scoreOf(st,earned) };
+        await setDoc(doc(db,'profiles',uid), pub, {merge:true});
+        const lower=prof.unameLower || (prof.username||'').toLowerCase();
+        if(lower) await setDoc(doc(db,'usernames',lower), pub, {merge:true});
+      }catch(e){}
       adminLog(cmd, uid, id);
       showToast('✓ '+(cmd==='u-grant'?'Granted':'Revoked')+' '+ach.n, true);
       admShowUser(); return;
@@ -8421,10 +8433,13 @@ function statsFromProfile(p){
     witching, leap, blueMoon, meteor, hubble, vanguard, dirs:dirSet.size,
     orbSeen:[...orb], maxObj:maxName, dirSeen:[...dirSet], trainSeen:x.trainSeen||0, chat:x.chat||0,
     explored:(Array.isArray(x.explored)?x.explored.length:0),
-    granted:new Set(Array.isArray(p&&p.granted)?p.granted:[]) };
+    granted:new Set(Array.isArray(p&&p.granted)?p.granted:[]),
+    revoked:new Set(Array.isArray(p&&p.revoked)?p.revoked:[]) };
 }
-// An award counts if it was earned, or granted by an admin (support fix-ups).
-function achEarned(st){ return ACH.filter(a=>a.t(st) || (st.granted && st.granted.has(a.id))); }
+// An award counts if it was earned OR granted by an admin — unless an admin has explicitly revoked
+// it, which suppresses it even when the earning trigger still fires (e.g. a stat counter can't be
+// un-incremented). Revoke is the override that actually makes an award disappear.
+function achEarned(st){ return ACH.filter(a=> (a.t(st) || (st.granted && st.granted.has(a.id))) && !(st.revoked && st.revoked.has(a.id))); }
 /* Counters for awards that can't be derived from the sightings list — how many
    Identify runs, UAP reports and CE5 sessions you've done. Stored on the profile
    so they survive a reinstall and are visible on your card. */
