@@ -700,11 +700,11 @@
   .filt-help[open] summary::before{content:'▾ '}
   .filt-help-body{line-height:1.55;padding:2px 2px 6px}
   .filt-help-body b{color:var(--text)}
-  #snapbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
+  #snapbtn,#originbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
     padding:11px;border-radius:11px;border:1px solid var(--border);background:rgba(120,160,255,.08);
     color:var(--text);font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
-  #snapbtn:hover{background:rgba(90,209,255,.14);border-color:rgba(90,209,255,.5);color:var(--accent)}
-  #snapbtn svg{display:block}
+  #snapbtn:hover,#originbtn:hover{background:rgba(90,209,255,.14);border-color:rgba(90,209,255,.5);color:var(--accent)}
+  #snapbtn svg,#originbtn svg{display:block}
   /* Support / tip jar */
   .tip-note{font-size:12.5px;color:var(--muted);line-height:1.55;margin:10px 0 12px}
   .tip-amts{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:10px}
@@ -1411,6 +1411,10 @@
   .ach-item.secret{opacity:.72}
   .ach-item.secret .ach-ic{filter:none;opacity:.55}
   .ach-item.secret .ach-txt b{color:var(--muted)}
+  /* Origin story */
+  .origin-story p{margin:0 0 13px;font-size:14px;line-height:1.62;color:var(--text)}
+  .origin-story p em{color:var(--accent);font-style:italic}
+  .origin-sign{color:var(--muted);font-weight:600;letter-spacing:.3px}
   /* Take-the-tour button + onboarding */
   #tourbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:9px;width:100%;
     padding:11px;border-radius:11px;border:1px solid var(--border);background:rgba(120,160,255,.08);
@@ -2597,6 +2601,7 @@
   <div class="note" id="stg-note"></div>
   <button id="sharebtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.7 15.7 6.3M8.3 13.3l7.4 4.4"/></svg> Share this app</button>
   <button id="tourbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.7-.9 1.4v.3"/><path d="M12 16.5h.01"/></svg> Take the tour</button>
+  <button id="originbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> The story behind SkyWatch</button>
   <button id="snapbtn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></svg> Share a snapshot</button>
   <div class="stg-ver" id="stg-ver">—</div>
   </div><!-- /stg-pane-main -->
@@ -2974,7 +2979,7 @@
 </script>
 
 <script>
-const BUILD = 'v217';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v218';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4368,6 +4373,27 @@ async function markCosmosVisited(name){
   try{ const {db,doc,setDoc}=window.fb; await setDoc(doc(db,'profiles',currentUser.uid),{stats:cur},{merge:true});
     await syncPublicSummary(); }catch(e){}
   try{ checkNewAchievements(); }catch(e){}
+}
+// Set a one-shot boolean stat flag (used by secret eggs like First Contact / Origin Story).
+async function bumpFlag(key){
+  if(!currentUser || !window.fb || !myProfile) return;
+  const st=myProfile.stats||{}; if(st[key]) return;                  // already set
+  const cur=Object.assign({}, st); cur[key]=1; myProfile.stats=cur;
+  try{ const {db,doc,setDoc}=window.fb; await setDoc(doc(db,'profiles',currentUser.uid),{stats:cur},{merge:true});
+    await syncPublicSummary(); }catch(e){}
+  try{ checkNewAchievements(); }catch(e){}
+}
+// The origin story — why SkyWatch exists. Reading it unlocks a secret award.
+function showOriginStory(){
+  const html='<div class="origin-story">'+
+    '<p>One night I was outside doing a CE5 session — the practice where you sit under the stars, quiet your mind, and invite contact. A steady light slid across the sky, smooth and certain, no blinking. My heart jumped. <em>This was it.</em></p>'+
+    '<p>I grabbed my phone to figure out what I was looking at… and no app could tell me. Star maps, satellite trackers — nothing gave me a straight answer in the moment. So instead of letting the mystery go, I started building my own tracker. A few obsessive weeks later, it worked.</p>'+
+    '<p>The very first thing it did was identify my "contact." It was the <b>International Space Station</b> — the single most-tracked object in the sky, passing over on a public timetable, with a crew of humans waving back from ~400&nbsp;km up. My first logged sighting is literally "ISS (ZARYA)."</p>'+
+    '<p>So this whole app is, in a way, a monument to being beautifully, enthusiastically wrong. But here’s the thing: looking up still feels like contact. Whether it’s the ISS, a Starlink train, a meteor, or something you genuinely can’t explain — SkyWatch exists to help you notice, identify, and keep a little logbook of the sky above you.</p>'+
+    '<p class="origin-sign">Clear skies. 🛰️</p>'+
+  '</div>';
+  openList('The story behind SkyWatch', html);
+  bumpFlag('originRead');                                            // reading it unlocks the Origin Story egg
 }
 // Fade the cosmos in/out with zoom, keep the far plane open, and place the body labels.
 function updateCosmos(){
@@ -6816,6 +6842,7 @@ function initSettingsUI(){
   $('settingsbtn').onclick=(e)=>{ e.stopPropagation(); $('accountmenu').classList.remove('open'); toggleSheet('settings'); };
   const sb=$('sharebtn'); if(sb) sb.onclick=shareApp;
   const snp=$('snapbtn'); if(snp) snp.onclick=shareSnapshot;
+  const ob=$('originbtn'); if(ob) ob.onclick=showOriginStory;
   const vr=$('stg-ver'); if(vr) vr.textContent='SkyWatch build '+BUILD;
   console.log('SkyWatch build '+BUILD);
   applyPrefs();
@@ -8566,7 +8593,8 @@ const ACH=[
   {id:'dawn',  cat:'timing', ic:'🌅', n:'Dawn Patrol',    d:'Log a sighting between 4–6am',  p:15, t:s=>s.dawn>=1},
   {id:'witch', cat:'timing', ic:'🕛', n:'Witching Hour',  d:'Log a sighting at exactly midnight', p:30, t:s=>s.witching>=1},
   {id:'leap',  cat:'timing', ic:'🐸', n:'Leap of Faith',  d:'Log a sighting on Feb 29',  p:40, t:s=>s.leap>=1},
-  {id:'bluem', cat:'timing', ic:'🔵', n:'Blue Moon',      d:'Log a sighting on a blue moon', p:30, t:s=>s.blueMoon>=1},
+  {id:'yuri',  cat:'timing', ic:'🚀', n:'Yuri’s Night',   d:'Log a sighting on Apr 12 — Gagarin, the first human in space', p:25, t:s=>s.yuri>=1},
+  {id:'apollo',cat:'timing', ic:'🌕', n:'One Small Step',  d:'Log a sighting on Jul 20 — the Apollo 11 Moon landing', p:25, t:s=>s.apollo>=1},
   {id:'meteor',cat:'timing', ic:'☄️', n:'Shooting Gallery',d:'Log a sighting on a meteor-shower peak', p:20, t:s=>s.meteor>=1},
   /* --- Rare finds --- */
   {id:'hubble',cat:'rare', ic:'🔭', n:'Hubble Hugger',    d:'Spot the Hubble Space Telescope', p:20, t:s=>s.hubble>=1},
@@ -8577,6 +8605,9 @@ const ACH=[
   {id:'chat1', cat:'social', ic:'💬', n:'Pen Pal',        d:'Chat back-and-forth with a friend', p:15, t:s=>s.chat>=1},
   // Easter eggs are hidden until earned (see achItemHTML) — no hints, no progress bar.
   {id:'egg-tour', cat:'egg', ic:'🪐', n:'Grand Tour', d:'Pinch out to space and open the Sun, the Moon and every planet', p:30, secret:true, t:s=>s.cosmicVisited>=COSMOS_TOTAL},
+  {id:'egg-first',cat:'egg', ic:'🛸', n:'First Contact', d:'Mark an object during a CE5 session and check it against the ISS', p:30, secret:true, t:s=>s.firstContact>=1},
+  {id:'bluem',    cat:'egg', ic:'🔵', n:'Blue Moon', d:'Log a sighting on the night of a blue moon', p:30, secret:true, t:s=>s.blueMoon>=1},
+  {id:'egg-origin',cat:'egg', ic:'📖', n:'Origin Story', d:'Read how SkyWatch came to be (Settings)', p:15, secret:true, t:s=>s.originRead>=1},
 ];
 // Progress for the locked ones: "3 / 5 · 2 to go". Awards without an explicit `pr`
 // are single-shot, so there's nothing meaningful to count towards.
@@ -8650,7 +8681,7 @@ function statsFromProfile(p){
   const groups={};                                  // per-layer tallies (weather, gps-ops, …)
   let night=0, dawn=0, firstTs=Infinity, lastTs=0, anniversary=0;
   const stamps=[], slDays={}, dirSet=new Set();
-  let witching=0, leap=0, blueMoon=0, meteor=0, hubble=0, vanguard=0;
+  let witching=0, leap=0, blueMoon=0, meteor=0, hubble=0, vanguard=0, yuri=0, apollo=0;
   for(const e of seen){
     ids.add(e.id); const c=e.count||1; sightings+=c; if(c>maxCount){ maxCount=c; maxName=e.name||''; }
     if(e.dir) dirSet.add(e.dir);                     // compass letter recorded at log time
@@ -8671,6 +8702,8 @@ function statsFromProfile(p){
       if(h>=4 && h<6) dawn++;
       if(h===0 && mn===0) witching=1;                // exactly midnight
       if(dt.getMonth()===1 && dt.getDate()===29) leap=1;
+      if(dt.getMonth()===3 && dt.getDate()===12) yuri=1;     // Apr 12 — Yuri Gagarin, first human in space (1961)
+      if(dt.getMonth()===6 && dt.getDate()===20) apollo=1;   // Jul 20 — Apollo 11 Moon landing (1969)
       if(isMeteorPeak(t)) meteor=1;
       if(isBlueMoon(t)) blueMoon=1;
       if(e.group==='starlink'||/STARLINK/i.test(e.name||'')){
@@ -8694,8 +8727,9 @@ function statsFromProfile(p){
     amateur:groups['amateur']||0, oneweb:groups['oneweb']||0,
     idf:x.idf||0, uap:x.uap||0, ce5:x.ce5||0, ce5min:x.ce5min||0,
     planned:x.planned||0, perfect:x.perfect||0, friends:(p&&p.friendCount)||0,
-    witching, leap, blueMoon, meteor, hubble, vanguard, dirs:dirSet.size,
+    witching, leap, blueMoon, meteor, hubble, vanguard, yuri, apollo, dirs:dirSet.size,
     orbSeen:[...orb], maxObj:maxName, dirSeen:[...dirSet], trainSeen:x.trainSeen||0, chat:x.chat||0,
+    firstContact:(x.firstContact?1:0), originRead:(x.originRead?1:0),
     explored:(Array.isArray(x.explored)?x.explored.length:0),
     cosmicVisited:(Array.isArray(x.cosmosSeen)?x.cosmosSeen.length:0),
     granted:new Set(Array.isArray(p&&p.granted)?p.granted:[]),
@@ -10056,6 +10090,7 @@ function ce5MarkHitsHTML(ts){
 // log it if it's a match. The ground track is drawn centred on the mark time.
 function ce5ViewOnMap(id, ts){
   const s=SATS.find(x=>x.id===id); if(!s){ showErr('That object is no longer loaded — try again after data reloads.'); return; }
+  if(id==='25544') bumpFlag('firstContact');   // checked a CE5 mark against the ISS → "First Contact" egg
   ce5PreviewPath={ sat:s, ts:ts };
   selectSat(s);                        // flies to it, opens the detail card, draws its live track
   // Re-point the camera at where it actually was at the mark time, not its live position.
