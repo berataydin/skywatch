@@ -1386,27 +1386,28 @@
   .cosmos-lbl{position:absolute;transform:translate(-50%,-160%);white-space:nowrap;
     font-size:11px;font-weight:600;letter-spacing:.4px;color:#dbe6ff;
     text-shadow:0 0 8px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.7);display:none}
-  /* Planet/Moon/Sun close-up card */
-  #cosmosmodal{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;padding:18px;
-    background:rgba(2,4,10,.82);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-  #cosmosmodal.show{display:flex}
-  .cbody-card{position:relative;width:min(400px,100%);max-height:88vh;overflow-y:auto;text-align:center;
-    background:var(--panel-solid);border:1px solid var(--border);border-radius:20px;padding:26px 22px 22px;
-    box-shadow:0 20px 60px rgba(0,0,0,.6)}
-  #cbody-close{position:absolute;top:12px;right:14px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
-    border-radius:50%;border:1px solid var(--border);background:rgba(0,0,0,.35);color:#fff;cursor:pointer;font-size:15px}
-  #cbody-art{display:flex;align-items:center;justify-content:center;height:200px;margin-bottom:14px}
-  .cbody-planet{position:relative;width:164px;height:164px;border-radius:50%;
-    box-shadow:0 0 46px rgba(140,180,255,.28), inset -14px -14px 42px rgba(0,0,0,.55)}
-  .cbody-rings{position:absolute;left:50%;top:50%;width:260px;height:66px;
-    transform:translate(-50%,-50%) rotate(-18deg);border-radius:50%;
-    border:9px solid rgba(232,222,184,.5);border-top-color:transparent;border-bottom-color:transparent;
-    box-shadow:0 0 16px rgba(232,222,184,.22)}
-  #cbody-name{font-size:22px;font-weight:800;letter-spacing:.3px;color:var(--text);margin-bottom:12px}
-  #cbody-facts{list-style:none;margin:0;padding:0;text-align:left;display:flex;flex-direction:column;gap:9px}
-  #cbody-facts li{position:relative;padding:10px 12px 10px 34px;border-radius:12px;border:1px solid var(--border);
-    background:rgba(120,160,255,.06);font-size:13.5px;line-height:1.45;color:var(--text)}
-  #cbody-facts li::before{content:'✦';position:absolute;left:13px;top:10px;color:var(--accent)}
+  /* Planet/Moon/Sun immersive close-up — zooms into the body with facts below */
+  #planetview{position:fixed;inset:0;z-index:120;display:none;flex-direction:column;align-items:center;justify-content:flex-start;
+    padding:calc(env(safe-area-inset-top) + 54px) 20px 40px;overflow-y:auto;text-align:center;
+    background:radial-gradient(120% 90% at 50% 16%, #0a1226, #03050d 72%)}
+  #planetview.show{display:flex}
+  #pv-close{position:absolute;top:calc(env(safe-area-inset-top) + 12px);right:16px;width:40px;height:40px;
+    border-radius:50%;border:1px solid var(--border);background:rgba(0,0,0,.4);color:#fff;font-size:15px;cursor:pointer;z-index:2}
+  #pv-body{position:relative;width:min(66vw,280px);aspect-ratio:1/1;margin-top:6px;border-radius:50%;flex:0 0 auto;
+    background-size:cover;background-position:center;
+    box-shadow:0 0 64px rgba(120,170,255,.35), inset -16px -16px 52px rgba(0,0,0,.5);
+    transform:scale(.32);opacity:0}
+  #planetview.show #pv-body{animation:pv-zoom .85s cubic-bezier(.22,.9,.3,1) forwards}
+  @keyframes pv-zoom{to{transform:scale(1);opacity:1}}
+  #pv-img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:none}
+  #pv-name{margin-top:24px;font-size:27px;font-weight:800;letter-spacing:.3px;color:var(--text);
+    opacity:0;animation:pv-fade .5s ease .4s forwards}
+  #pv-facts{list-style:none;margin:16px 0 0;padding:0;width:min(440px,100%);text-align:left;
+    display:flex;flex-direction:column;gap:9px;opacity:0;animation:pv-fade .5s ease .55s forwards}
+  #pv-facts li{position:relative;padding:11px 13px 11px 36px;border-radius:12px;border:1px solid var(--border);
+    background:rgba(120,160,255,.06);font-size:14px;line-height:1.5;color:var(--text)}
+  #pv-facts li::before{content:'✦';position:absolute;left:14px;top:11px;color:var(--accent)}
+  @keyframes pv-fade{to{opacity:1}}
   .ach-item.secret{opacity:.72}
   .ach-item.secret .ach-ic{filter:none;opacity:.55}
   .ach-item.secret .ach-txt b{color:var(--muted)}
@@ -2407,13 +2408,11 @@
   </div>
 </div>
 
-<div id="cosmosmodal">
-  <div class="cbody-card">
-    <div id="cbody-close" aria-label="Close">✕</div>
-    <div id="cbody-art"></div>
-    <div id="cbody-name">—</div>
-    <ul id="cbody-facts"></ul>
-  </div>
+<div id="planetview">
+  <button id="pv-close" aria-label="Close">✕</button>
+  <div id="pv-body"><img id="pv-img" alt="" /></div>
+  <div id="pv-name">—</div>
+  <ul id="pv-facts"></ul>
 </div>
 
 <div id="settings" class="panel">
@@ -2975,7 +2974,7 @@
 </script>
 
 <script>
-const BUILD = 'v216';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v217';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4225,6 +4224,21 @@ const COSMOS_MOON={ n:'Moon', r:205, sz:6.5, ring:true, c:[0.86,0.86,0.9],
   facts:['Earth’s only natural satellite','About 384,000 km away — 1.3 light-seconds','Keeps the same face toward Earth always','Its pull drives the ocean tides']};
 const COSMOS_EARTH={L0:100.46, per:365.256};
 const COSMOS_TOTAL=COSMOS_BODIES.length+2;   // planets + Sun + Moon (what "Grand Tour" needs)
+// Real imagery (NASA/ESA via Wikimedia's Special:FilePath, which redirects to a scaled thumbnail).
+// If any fails to load, the close-up falls back to the CSS-rendered body underneath.
+const COSMOS_IMG=(function(){ const w='?width=680', fp='https://commons.wikimedia.org/wiki/Special:FilePath/';
+  return {
+    Sun:    fp+"The_Sun_by_the_Atmospheric_Imaging_Assembly_of_NASA's_Solar_Dynamics_Observatory_-_20100819.jpg"+w,
+    Moon:   fp+'FullMoon2010.jpg'+w,
+    Mercury:fp+'Mercury_in_color_-_Prockter07-edit1.jpg'+w,
+    Venus:  fp+'Venus_from_Mariner_10.jpg'+w,
+    Mars:   fp+'OSIRIS_Mars_true_color.jpg'+w,
+    Jupiter:fp+'Jupiter_and_its_shrunken_Great_Red_Spot.jpg'+w,
+    Saturn: fp+'Saturn_during_Equinox.jpg'+w,
+    Uranus: fp+'Uranus2.jpg'+w,
+    Neptune:fp+'Neptune_Full.jpg'+w,
+  };
+})();
 // The Moon moves fast; a low-precision mean ecliptic longitude is plenty for its direction.
 function moonDir(){ const d=(Date.now()-946728000000)/86400000, L=(218.316+13.176396*d)*Math.PI/180; return norm2(Math.cos(L), Math.sin(L)); }
 function cosmicMat(THREE){
@@ -4329,15 +4343,19 @@ function pickCosmos(e){
   if(best>=0){ openCosmosBody(cosmos.bodies[best]); return true; }
   return false;
 }
-// The close-up card: a big rendered body + a few facts. Also records the visit for the Grand Tour egg.
+// Full-screen close-up: zoom into the body (real NASA/ESA imagery, CSS-rendered fallback) and list
+// its facts below. Also records the visit for the Grand Tour easter egg.
 function openCosmosBody(b){
-  const m=$('cosmosmodal'); if(!m) return;
+  const v=$('planetview'); if(!v) return;
   SFX.select(); Haptics.select();
-  const ringHTML = b.rings ? '<div class="cbody-rings"></div>' : '';
-  $('cbody-art').innerHTML='<div class="cbody-planet" style="background:'+b.css+'">'+ringHTML+'</div>';
-  $('cbody-name').textContent=b.n;
-  $('cbody-facts').innerHTML=(b.facts||[]).map(f=>'<li>'+esc(f)+'</li>').join('');
-  m.classList.add('show');
+  const body=$('pv-body'); body.style.background=b.css;               // fallback shows if the photo can't load
+  const img=$('pv-img'); const src=COSMOS_IMG[b.n];
+  img.style.display='none';
+  if(src){ img.onload=()=>{ img.style.display='block'; }; img.onerror=()=>{ img.style.display='none'; }; img.src=src; }
+  else { img.removeAttribute('src'); }
+  $('pv-name').textContent=b.n;
+  $('pv-facts').innerHTML=(b.facts||[]).map(f=>'<li>'+esc(f)+'</li>').join('');
+  v.classList.remove('show'); void v.offsetWidth; v.classList.add('show');   // restart the zoom-in animation
   markCosmosVisited(b.n);
 }
 // Record which bodies you've opened; unlocks the "Grand Tour" easter egg at the full set.
@@ -9430,8 +9448,12 @@ function planTonight(){
       if(cl && ntData){ ntData.cloud=cl; renderNightList(); markTonightProgress(); }
     });
     // Starlink-train scan is heavier — defer it a beat, then fold it in if one's up tonight.
-    setTimeout(()=>{ if(!ntData) return; const tr=findStarlinkTrain(ntData.win);
-      if(tr && ntData){ ntData.train=tr; renderNightList(); markTonightProgress(); } }, 90);
+    const scanTrain=()=>{ if(!ntData) return; const tr=findStarlinkTrain(ntData.win);
+      if(tr && ntData){ ntData.train=tr; renderNightList(); markTonightProgress(); } };
+    setTimeout(scanTrain, 90);
+    // Also pull the recent-launch feed (same seed the Layers train view uses) and re-scan once it's
+    // in, so a brand-new batch that hasn't streamed into the main Starlink load is still detected.
+    ensureTrainData().then(scanTrain);
   }, 40);
 }
 /* Cloud cover per pass — free, key-less hourly forecast from Open-Meteo (same service the
@@ -10179,10 +10201,10 @@ function showUapReports(){
       '</div>'; }).join(''));
 }
 function initListModal(){
-  const cm=$('cosmosmodal'); if(cm){
-    const close=()=>cm.classList.remove('show');
-    const cc=$('cbody-close'); if(cc) cc.onclick=close;
-    cm.addEventListener('click', e=>{ if(e.target===cm) close(); });   // tap the backdrop to dismiss
+  const pv=$('planetview'); if(pv){
+    const close=()=>pv.classList.remove('show');
+    const cc=$('pv-close'); if(cc) cc.onclick=close;
+    document.addEventListener('keydown', e=>{ if(pv.classList.contains('show') && e.key==='Escape') close(); });
   }
   const c=$('lm-close'); if(c) c.onclick=()=>$('listmodal').classList.remove('show');
   const m=$('listmodal'); if(m) m.addEventListener('click', e=>{ if(e.target===m) m.classList.remove('show'); });
