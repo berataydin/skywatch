@@ -2981,7 +2981,7 @@
 </script>
 
 <script>
-const BUILD = 'v221';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v222';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7346,12 +7346,18 @@ function renderAdmin(){
   const el=$('adm-body'); if(!el) return;
   if(!isAdminUser){ el.innerHTML='<div class="fr-note">Not an admin on this account.</div>'; return; }
   el.innerHTML=
+    '<div class="stg"><div class="lbl">Notify me on new logins'+
+      '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
+      '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
+    '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
     '<div class="idf-chips adm-nav">'+
       ['inbox','users','broadcast','flags','stats','admins'].map(v=>
         '<button data-v="'+v+'"'+(admView===v?' class="on"':'')+'>'+
         ({inbox:'📥 Inbox',users:'👤 Users',broadcast:'📣 Broadcast',flags:'🚩 Flags',stats:'📊 Stats',admins:'🛡 Admins'})[v]+
         '</button>').join('')+
     '</div><div id="adm-pane"></div>';
+  const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
+  const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
   el.querySelectorAll('.adm-nav button').forEach(b=>b.onclick=()=>{ admView=b.dataset.v; renderAdmin(); });
   const pane=$('adm-pane');
   if(admView==='inbox') admRenderInbox(pane);
@@ -7706,21 +7712,13 @@ async function admRenderAdmins(pane){
     admins=snap.docs.map(d=>Object.assign({_id:d.id}, d.data()));
   }catch(e){ admins=[]; }
   pane.innerHTML=
-    '<div class="stg"><div class="lbl">Notify me on new logins'+
-      '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
-      '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
     '<div class="usr-note">Bootstrap admins live in the app source. These are added at runtime and take effect on their next launch.</div>'+
     (ADMIN_BOOTSTRAP.filter(u=>u!=='PASTE_YOUR_UID_HERE').map(u=>
       '<div class="dev-row"><span class="dev-k">built in</span><span class="dev-v">'+esc(u)+'</span></div>').join(''))+
     admins.map(a=>'<div class="dev-row"><span class="dev-k">'+esc(a.username||a._id.slice(0,10))+'</span>'+
       '<span class="dev-v"><button class="adm-x" data-a="adm-del:'+esc(a._id)+'">remove</button></span></div>').join('')+
-    '<div class="usr-row"><input id="adm-new" placeholder="@username to promote" /><button id="adm-add">Add</button></div>'+
-    '<div class="usr-note" style="margin-top:14px">Maintenance</div>'+
-    '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
-    '<div class="usr-note">Refreshes every user’s points + awards so the rankings and profile views match. Safe to run anytime.</div>';
+    '<div class="usr-row"><input id="adm-new" placeholder="@username to promote" /><button id="adm-add">Add</button></div>';
   $('adm-add').onclick=admAddAdmin;
-  const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
-  const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   admWire(pane);
 }
 // One-time backfill: recompute every user's score + awards from their profile and write both the
