@@ -691,6 +691,7 @@
   .ast-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:14px 0 4px}
   .ast-asof{font-size:11px;color:var(--muted);margin-right:auto}
   .ast-tbtn{width:auto;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;padding:8px 12px}
+  .ach-detail{display:block;font-size:11px;color:#8fb4e6;margin-top:3px;line-height:1.35}
   /* Filter acronym explainer */
   .filt-help{margin:6px 2px 2px;font-size:12px;color:var(--muted)}
   .filt-help summary{cursor:pointer;font-weight:600;color:var(--text);list-style:none;padding:6px 2px}
@@ -2850,7 +2851,7 @@
 </script>
 
 <script>
-const BUILD = 'v197';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v198';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4807,6 +4808,7 @@ function renderLayerItems(id, box){
     : trains ? 'No low Starlink train flying right now.'
     : unknown ? 'No unidentified objects in the tracked set.'
     : 'Still loading…')+'</div>'; return; }
+  if(trains) awardTrainView();                        // opening the train list = you watched one
   if(decaying) items.sort((a,b)=>{ const A=orbitDetails(a), B=orbitDetails(b); return (A?A.per:9e9)-(B?B.per:9e9); });  // most urgent (lowest) first
   else if(observer) items.sort((a,b)=>(b.elevation??-99)-(a.elevation??-99));   // overhead first
   else items.sort((a,b)=>(a.name||'').localeCompare(b.name||''));               // else alphabetical
@@ -7807,15 +7809,20 @@ const ACH=[
   /* --- Satellites & layers --- */
   {id:'sl10',  cat:'sats', ic:'🔗', n:'Starlink Hunter',  d:'Spot 10 Starlinks',        p:15, t:s=>s.starlink>=10, pr:s=>[s.starlink,10]},
   {id:'geo',   cat:'sats', ic:'🌍', n:'High & Far',       d:'Spot a GEO satellite',     p:15, t:s=>s.geo>=1},
-  {id:'orbits',cat:'sats', ic:'🪐', n:'Globetrotter',     d:'Spot LEO, MEO & GEO',      p:20, t:s=>s.orbits>=3, pr:s=>[s.orbits,3]},
+  {id:'orbits',cat:'sats', ic:'🪐', n:'Globetrotter',     d:'Spot LEO, MEO & GEO',      p:20, t:s=>s.orbits>=3, pr:s=>[s.orbits,3],
+    detail:s=>{ const need=['LEO','MEO','GEO'].filter(o=>!(s.orbSeen||[]).includes(o)); return need.length?('Still need: '+need.join(', ')):'All three seen'; }},
   {id:'slnite',cat:'sats', ic:'🌌', n:'Constellation',    d:'5 Starlinks in one night',  p:20, t:s=>s.slNight>=5, pr:s=>[s.slNight,5]},
+  {id:'train', cat:'sats', ic:'🚂', n:'Train Spotter',    d:'Watch a Starlink train',    p:20, t:s=>s.trainSeen>=1},
   {id:'nav',   cat:'sats', ic:'🧭', n:'Navigator',        d:'Spot a GPS and a Galileo',  p:20, t:s=>s.gps>=1&&s.galileo>=1, pr:s=>[(s.gps?1:0)+(s.galileo?1:0),2]},
   {id:'wx',    cat:'sats', ic:'🌦️', n:'Weatherman',       d:'Spot 3 weather satellites', p:15, t:s=>s.weather>=3, pr:s=>[s.weather,3]},
   {id:'ham',   cat:'sats', ic:'📻', n:'Ham Operator',     d:'Spot an amateur-radio satellite', p:20, t:s=>s.amateur>=1},
-  {id:'bband', cat:'sats', ic:'📡', n:'Broadband',        d:'Spot a Starlink and a OneWeb', p:20, t:s=>s.starlink>=1&&s.oneweb>=1, pr:s=>[(s.starlink?1:0)+(s.oneweb?1:0),2]},
+  {id:'bband', cat:'sats', ic:'📡', n:'Broadband',        d:'Spot a Starlink and a OneWeb', p:20, t:s=>s.starlink>=1&&s.oneweb>=1, pr:s=>[(s.starlink?1:0)+(s.oneweb?1:0),2],
+    detail:s=>'Starlink '+(s.starlink?'✓':'✗')+' · OneWeb '+(s.oneweb?'✓':'✗')},
   /* --- Dedication --- */
-  {id:'x5',    cat:'dedication', ic:'🌟', n:'Devoted',    d:'Spot one object 5×',       p:15, t:s=>s.maxCount>=5, pr:s=>[s.maxCount,5]},
-  {id:'x25',   cat:'dedication', ic:'🗿', n:'Old Faithful',d:'Spot one object 25×',      p:35, t:s=>s.maxCount>=25, pr:s=>[s.maxCount,25]},
+  {id:'x5',    cat:'dedication', ic:'🌟', n:'Devoted',    d:'Spot one object 5×',       p:15, t:s=>s.maxCount>=5, pr:s=>[s.maxCount,5],
+    detail:s=> s.maxObj ? ('Best: '+shortName(s.maxObj)+' — seen '+s.maxCount+'×') : 'Log the same object again to build a streak'},
+  {id:'x25',   cat:'dedication', ic:'🗿', n:'Old Faithful',d:'Spot one object 25×',      p:35, t:s=>s.maxCount>=25, pr:s=>[s.maxCount,25],
+    detail:s=> s.maxObj ? ('Best: '+shortName(s.maxObj)+' — seen '+s.maxCount+'×') : 'Keep logging the same object'},
   {id:'b25',   cat:'dedication', ic:'🎖️', n:'Collector',  d:'25 different objects',     p:20, t:s=>s.badges>=25, pr:s=>[s.badges,25]},
   {id:'b50',   cat:'dedication', ic:'🏵️', n:'Half Century',d:'50 different objects',     p:35, t:s=>s.badges>=50, pr:s=>[s.badges,50]},
   {id:'s100',  cat:'dedication', ic:'💯', n:'Centurion',  d:'100 total sightings',      p:30, t:s=>s.sightings>=100, pr:s=>[s.sightings,100]},
@@ -7849,17 +7856,20 @@ const ACH=[
   {id:'rose',  cat:'rare', ic:'🌹', n:'Compass Rose',     d:'Log sightings in all 8 compass directions', p:35, t:s=>s.dirs>=8, pr:s=>[s.dirs,8]},
   /* --- Social --- */
   {id:'fr5',   cat:'social', ic:'👥', n:'Social Butterfly',d:'Have 5 friends',           p:20, t:s=>s.friends>=5, pr:s=>[s.friends,5]},
+  {id:'chat1', cat:'social', ic:'💬', n:'Pen Pal',        d:'Chat back-and-forth with a friend', p:15, t:s=>s.chat>=1},
 ];
 // Progress for the locked ones: "3 / 5 · 2 to go". Awards without an explicit `pr`
 // are single-shot, so there's nothing meaningful to count towards.
 function achItemHTML(a, on, st, tag){
   const pr = on ? null : achProgress(a, st);
+  let det=''; if(!on && a.detail){ try{ det=a.detail(st)||''; }catch(e){} }
   return '<div class="ach-item'+(on?' on':'')+'"'+(tag?(' data-ach="'+a.id+'"'):'')+'>'+
     '<div class="ach-ic">'+a.ic+'</div>'+
     '<div class="ach-txt"><b>'+a.n+'</b><span>'+a.d+'</span>'+
       (pr ? '<span class="ach-prog"><span class="ach-bar"><i style="width:'+pr.pct+'%"></i></span>'+
             '<span class="ach-nums">'+pr.cur+pr.unit+' / '+pr.goal+pr.unit+
             ' &middot; <b>'+pr.left+pr.unit+' to go</b></span></span>' : '')+
+      (det ? '<span class="ach-detail">'+esc(det)+'</span>' : '')+
     '</div>'+
     (on ? '<span class="ach-pts">+'+a.p+'</span>'
         : '<span class="ach-pts locked">🔒 +'+a.p+'</span>')+
@@ -7909,13 +7919,13 @@ function isBlueMoon(t){
 }
 function statsFromProfile(p){
   const seen=Array.isArray(p&&p.seen)?p.seen:[], ids=new Set();
-  let sightings=0, starlink=0, geo=0, launches=0, inperson=0, maxCount=0; const orb=new Set();
+  let sightings=0, starlink=0, geo=0, launches=0, inperson=0, maxCount=0, maxName=''; const orb=new Set();
   const groups={};                                  // per-layer tallies (weather, gps-ops, …)
   let night=0, dawn=0, firstTs=Infinity, lastTs=0, anniversary=0;
   const stamps=[], slDays={}, dirSet=new Set();
   let witching=0, leap=0, blueMoon=0, meteor=0, hubble=0, vanguard=0;
   for(const e of seen){
-    ids.add(e.id); const c=e.count||1; sightings+=c; if(c>maxCount) maxCount=c;
+    ids.add(e.id); const c=e.count||1; sightings+=c; if(c>maxCount){ maxCount=c; maxName=e.name||''; }
     if(e.dir) dirSet.add(e.dir);                     // compass letter recorded at log time
     if(e.id==='20580' || /HUBBLE|HST/i.test(e.name||'')) hubble=1;
     if(e.id==='5' || e.id==='00005' || /VANGUARD 1/i.test(e.name||'')) vanguard=1;
@@ -7958,6 +7968,7 @@ function statsFromProfile(p){
     idf:x.idf||0, uap:x.uap||0, ce5:x.ce5||0, ce5min:x.ce5min||0,
     planned:x.planned||0, perfect:x.perfect||0, friends:(p&&p.friendCount)||0,
     witching, leap, blueMoon, meteor, hubble, vanguard, dirs:dirSet.size,
+    orbSeen:[...orb], maxObj:maxName, dirSeen:[...dirSet], trainSeen:x.trainSeen||0, chat:x.chat||0,
     explored:(Array.isArray(x.explored)?x.explored.length:0),
     granted:new Set(Array.isArray(p&&p.granted)?p.granted:[]) };
 }
@@ -8051,7 +8062,12 @@ async function logSighting(s, ts){
   if(!myProfile||!myProfile.username){ showErr('Choose a username first (Friends tab).'); return; }
   const list=Array.isArray(myProfile.seen)?myProfile.seen.map(e=>Object.assign({},e)):[];
   const i=list.findIndex(x=>x.id===s.id); let n;
-  const dir=azCompass8(s.azimuth);                  // for the Compass Rose award
+  let dir=azCompass8(s.azimuth);                    // for the Compass Rose award
+  if(!dir && observer && s.satrec){                 // the render worker doesn't fill azimuth — compute it fresh
+    try{ const dd=new Date(simNow()), pv=satellite.propagate(s.satrec, dd);
+      if(pv&&pv.position){ const la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, satellite.gstime(dd)));
+        dir=azCompass8(la.azimuth*R2D); } }catch(e){}
+  }
   if(i>=0){ list[i].count=(list[i].count||1)+1; list[i].last=Math.max(list[i].last||list[i].ts||0, ts); if(dir) list[i].dir=dir; n=list[i].count; }
   else { list.push({id:s.id, name:s.name, kind:'sat', group:s.group, oc:orbitClass(s), ts, last:ts, count:1, dir}); n=1; }
   try{ await commitSeen(list, addSightDay(myProfile.sightDays, ts));
@@ -8705,8 +8721,12 @@ function findStarlinkTrain(win){
   if(!best) return null;
   return { start:best.start, count:best.count, az:azCompass(best.az/best.count), peakEl:Math.round(best.peakEl) };
 }
+// One-shot award helpers (guarded so they don't re-write once earned).
+function awardTrainView(){ const st=(myProfile&&myProfile.stats)||{}; if(currentUser && (st.trainSeen||0)<1) bumpStat('trainSeen'); }
+function awardFirstChat(){ const st=(myProfile&&myProfile.stats)||{}; if(currentUser && (st.chat||0)<1) bumpStat('chat'); }
 async function shareTrain(tr){
   if(!tr) return;
+  awardTrainView();                                  // tapping the train banner = you watched one
   const url=appShareUrl();
   const text='🚂 A Starlink train (~'+tr.count+' satellites in a line) is visible tonight at '+
     fmtPassTime(tr.start)+' — look '+tr.az+', up to '+tr.peakEl+'°. Watch it with me on SkyWatch!';
@@ -9623,7 +9643,9 @@ function openChatWith(uid, name){
   if(unsubChatThread){ unsubChatThread(); unsubChatThread=null; }
   const {db, collection, onSnapshot, query, orderBy, limit}=window.fb;
   unsubChatThread=onSnapshot(query(collection(db,'chats',cid,'messages'), orderBy('ts','asc'), limit(300)), snap=>{
-    renderChatMsgs(snap.docs.map(d=>d.data()));
+    const msgs=snap.docs.map(d=>d.data());
+    renderChatMsgs(msgs);
+    if(msgs.some(m=>m.from===currentUser.uid) && msgs.some(m=>m.from && m.from!==currentUser.uid)) awardFirstChat();  // back-and-forth
     if(chatViewingUid(uid)){ markChatRead(cid); updateChatBadge(); }
   }, err=>{ console.warn('chat thread', err); const b=$('chat-msgs'); if(b) b.innerHTML='<div class="fr-note">Couldn’t load messages.</div>'; });
   setTimeout(()=>{ const ta=$('chat-text'); if(ta) ta.focus(); }, 60);
