@@ -2851,7 +2851,7 @@
 </script>
 
 <script>
-const BUILD = 'v198';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v199';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7351,8 +7351,11 @@ async function syncVisibility(){
       { listed:prefs.listed!==false, ranked:prefs.ranked!==false }, {merge:true});
   }catch(e){ console.warn('visibility', e); }
 }
+let settingsSynced=false;   // becomes true once this device has loaded the account settings
 function saveSettings(){
-  if(!currentUser || applyingRemote || !window.fb) return;
+  // Don't write until the account settings have loaded — otherwise an early trigger (e.g. the
+  // opening globe animation firing a camera-change) would clobber saved settings with defaults.
+  if(!currentUser || applyingRemote || !window.fb || !settingsSynced) return;
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{
     const {db, doc, setDoc}=window.fb;
@@ -7641,13 +7644,14 @@ function initAuth(){
     if(unsubSettings){ unsubSettings(); unsubSettings=null; }
     if(user){
       firstSyncPending=true;
+      settingsSynced=false;                    // block saves until this device has loaded the account settings
       wasSignedIn=true;
       try{ showSignInCard(user); }catch(e){ console.warn('welcome card', e); }   // never block sign-in
       loadAdmins(); loadConfig(); startMyFeedback();
       const {db, doc, onSnapshot}=window.fb;
       unsubSettings = onSnapshot(doc(db,'users',user.uid),
-        snap=>{ if(snap.exists()) applySettings(snap.data()); },
-        err=>console.warn('settings snapshot error',err));
+        snap=>{ if(snap.exists()) applySettings(snap.data()); settingsSynced=true; },   // now safe to persist changes
+        err=>{ console.warn('settings snapshot error',err); settingsSynced=true; });    // don't lock saves forever on error
       startSocial(user);
     } else {
       if(wasSignedIn) showToast('Signed out');
