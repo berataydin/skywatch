@@ -2981,7 +2981,7 @@
 </script>
 
 <script>
-const BUILD = 'v223';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v224';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7346,9 +7346,11 @@ function renderAdmin(){
   const el=$('adm-body'); if(!el) return;
   if(!isAdminUser){ el.innerHTML='<div class="fr-note">Not an admin on this account.</div>'; return; }
   el.innerHTML=
+    '<div class="stg-sec">Admin notifications</div>'+
     '<div class="stg"><div class="lbl">Notify me on new logins'+
       '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
       '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
+    '<div class="stg-sec">Maintenance</div>'+
     '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
     '<div class="idf-chips adm-nav">'+
       ['inbox','users','broadcast','flags','stats','admins'].map(v=>
