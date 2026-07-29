@@ -2981,7 +2981,7 @@
 </script>
 
 <script>
-const BUILD = 'v222';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v223';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -8065,7 +8065,7 @@ function collectSettings(){
   let zoom=null; try{ zoom=world.pointOfView().altitude; }catch(e){}
   return { groups, lat: observer?observer.lat:null, lng: observer?observer.lng:null, zoom,
     units: prefs.units, time: prefs.time, autorotate: prefs.autorotate, issPath: prefs.issPath, cutoff: prefs.cutoff, music: prefs.music,
-    notify: prefs.notify, notifyGroups: prefs.notifyGroups, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, push: prefs.push,
+    notify: prefs.notify, notifyGroups: prefs.notifyGroups, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
     shareFeed: prefs.shareFeed, shareLoc: prefs.shareLoc, locPrecise: prefs.locPrecise,
     listed: prefs.listed, ranked: prefs.ranked,
     alertMinEl: prefs.alertMinEl, quiet: prefs.quiet, quietFrom: prefs.quietFrom, quietTo: prefs.quietTo, digest: prefs.digest,
@@ -8103,7 +8103,8 @@ function applySettings(s){
     if(typeof s.borders==='boolean') prefs.borders=s.borders;
     if(typeof s.sounds==='boolean') prefs.sounds=s.sounds;
     if(typeof s.vibrate==='boolean') prefs.vibrate=s.vibrate;
-    if(typeof s.push==='boolean') prefs.push=s.push;
+    if(typeof s.pushOn==='boolean') prefs.push=s.pushOn;
+    else if(s.push===true) prefs.push=true;   // legacy heal: the boolean used to be stored in `push`, clobbering the subscription; reconcilePush will re-subscribe and rewrite the object
     ['shareFeed','shareLoc','locPrecise','listed','ranked','quiet','nightMode','dataSaver','digest']
       .forEach(k=>{ if(typeof s[k]==='boolean') prefs[k]=s[k]; });
     ['alertMinEl','quietFrom','quietTo'].forEach(k=>{ if(typeof s[k]==='number') prefs[k]=s[k]; });
