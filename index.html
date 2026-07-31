@@ -2572,6 +2572,10 @@
       <div class="lbl">🚀 Rocket launches<small>Countdown milestones and liftoff</small></div>
       <div class="switch" id="nt-rocket" role="switch"></div>
     </div>
+    <div class="stg">
+      <div class="lbl">🚂 Starlink trains<small>A heads-up before a string-of-pearls pass</small></div>
+      <div class="switch" id="nt-train" role="switch"></div>
+    </div>
   </div>
   <div class="stg-sec">Feedback</div>
   <div class="tip-note">Something broken, or an idea? This reaches the developer directly.</div>
@@ -2981,7 +2985,7 @@
 </script>
 
 <script>
-const BUILD = 'v224';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v227';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3073,7 +3077,7 @@ const selMarker = {lat:null, lng:null, alt:0, _sel:true};   // pulsing highlight
 function simNow(){ return Date.now(); }
 // User preferences (synced to the signed-in account)
 const prefs = { units:'metric', time:'24', autorotate:true, issPath:true, cutoff:0, music:true,
-  notify:false, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:false,
+  notify:true, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, notifyTrain:true, favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:true,   // alerts + background push default ON (browsers still require a one-time permission grant before a real push can deliver)
   // Privacy — every one of these defaults to the least surprising option.
   shareFeed:true, shareLoc:true, locPrecise:true, listed:true, ranked:true,
   // Alerts
@@ -4680,6 +4684,19 @@ function firePassNotification(sat, p){
         badge:'icon-192.png', renotify:false, data:{type:'sat', id:sat.id} } }
   );
 }
+function fireTrainNotification(tr){
+  const mins=Math.max(1,Math.round((tr.start-Date.now())/60000));
+  dispatchAlert(
+    { hue:'185,240,255', icon:'🚂', kicker:'Starlink train · '+mins+' min',
+      name:'~'+tr.count+' satellites in a line',
+      desc:'Look '+tr.az+', up to '+tr.peakEl+'° — a string-of-pearls pass',
+      onTap:()=>{ enabled['starlink']=true; enabled['trains']=true; syncLayerToggle('starlink'); syncLayerToggle('trains'); renderFrame(); } },
+    { title:'🚂 Starlink train tonight',
+      opts:{ body:'In ~'+mins+' min · look '+tr.az+', up to '+tr.peakEl+'°',
+        tag:'train-'+Math.round(tr.start/60000), icon:'icon-192.png',
+        badge:'icon-192.png', renotify:false, data:{type:'train'} } }
+  );
+}
 /* ============================================================
    Background alerts (Web Push)
    ------------------------------------------------------------
@@ -4757,7 +4774,7 @@ async function disablePush(){
    per-device — and Chrome/Android can silently drop one. So whenever the app thinks push is
    on but this device has no live subscription, quietly re-create it. Never prompts: it only
    runs when permission is already granted, so a fresh device still opts in via the toggle. */
-let pushReconciled=false;
+let pushReconciled=false, pushPromptTried=false;
 async function reconcilePush(){
   if(pushReconciled || !prefs.push) return;
   if(!currentUser || !window.fb) return;
@@ -4780,6 +4797,22 @@ async function savePushSubscription(sub){
     endpoint:j.endpoint, p256dh:(j.keys&&j.keys.p256dh)||'', auth:(j.keys&&j.keys.auth)||'',
     ua:navigator.userAgent.slice(0,180), updated:Date.now()
   }}, {merge:true});
+}
+/* Alerts default ON, but a real push needs a permission grant, and browsers only allow that prompt
+   from a tap. So once per device, show a gentle card whose tap does the enabling — turning the
+   "on by default" preference into an actual subscription without an aggressive auto-prompt. */
+const PUSH_PROMPT_KEY='skywatch_pushprompt';
+function maybePromptPush(){
+  try{
+    if(!currentUser || prefs.push===false) return;                 // signed in, and hasn't opted out
+    if(!pushSupported() || iosNeedsInstall()) return;              // can't push here anyway
+    if(!('Notification' in window) || Notification.permission!=='default') return;  // already granted or denied
+    if(localStorage.getItem(PUSH_PROMPT_KEY)) return;              // only ask once on this device
+    localStorage.setItem(PUSH_PROMPT_KEY,'1');
+    showPremiumCard({ hue:'90,209,255', icon:'🔔', kicker:'Never miss a pass',
+      name:'Tap to turn on sky alerts', desc:'A heads-up before the ISS, a Starlink train or a bright pass flies over.',
+      ms:12000, onTap:()=>{ enablePush(); } });
+  }catch(e){}
 }
 /* Build the next N visible passes as ready-to-send payloads. Runs in slices so it
    never blocks a frame, exactly like scanAlerts. */
@@ -4820,8 +4853,28 @@ function buildAlertSchedule(cb){
     const final = out.slice(0, PUSH_MAX);
     const dg = buildDigestEntry(now, win, digestRows);     // one evening summary, appended after the cap
     if(dg){ final.push(dg); final.sort((a,b)=>a.t-b.t); }
+    const tr = buildTrainAlert(now, win);                  // a heads-up before tonight's Starlink train
+    if(tr){ final.push(tr); final.sort((a,b)=>a.t-b.t); }
     cb(final);
   })();
+}
+// findStarlinkTrain is a heavy scan; cache it ~10 min so the 2-minute alert loop stays cheap.
+let _trainAlertCache=undefined, _trainAlertAt=0;
+function cachedTrain(win){
+  if(_trainAlertCache!==undefined && Date.now()-_trainAlertAt<600000) return _trainAlertCache;
+  let tr=null; try{ tr = win ? findStarlinkTrain(win) : null; }catch(e){}
+  _trainAlertCache=tr; _trainAlertAt=Date.now(); return tr;
+}
+// One alert fired ~6 min before tonight's detected Starlink-train pass (null if none / already past).
+function buildTrainAlert(now, win){
+  if(!prefs.notifyTrain || !win) return null;
+  const tr=cachedTrain(win);
+  if(!tr || !tr.start) return null;
+  const fireT = tr.start - ALERT_LEAD_MS;
+  if(fireT <= now+60000 || fireT >= win.end || inQuietHours(fireT)) return null;
+  return { t:fireT, title:'🚂 Starlink train tonight',
+    body:'~'+tr.count+' satellites in a line in ~'+Math.round(ALERT_LEAD_MS/60000)+' min · look '+tr.az+', up to '+tr.peakEl+'°',
+    tag:'train-'+Math.round(tr.start/60000), data:{type:'train'} };
 }
 // One "tonight's sky" summary, fired ~45 min before dusk (or shortly if we're already near it).
 function buildDigestEntry(now, win, rows){
@@ -4880,8 +4933,17 @@ function scanAlerts(){
   // Permission is only needed for the system path — an in-app card needs nothing.
   if(!prefs.notify || !observer) return;
   if(!appIsVisible() && (!('Notification' in window) || Notification.permission!=='granted')) return;
+  const now=Date.now();
+  // Starlink-train heads-up (a sub-option of pass alerts).
+  if(prefs.notifyTrain){
+    const tr=cachedTrain(tonightWindow(now));
+    if(tr && tr.start>now && tr.start-now<=ALERT_LEAD_MS && !inQuietHours(tr.start)){
+      const key='train@'+Math.round(tr.start/60000);
+      if(!notifiedKeys.has(key)){ fireTrainNotification(tr); notifiedKeys.add(key); saveNotified(); }
+    }
+  }
   const objs=alertObjects(); if(!objs.length) return;
-  const now=Date.now(), end=now+ALERT_LEAD_MS+15*60000;   // look far enough ahead to see the whole pass
+  const end=now+ALERT_LEAD_MS+15*60000;   // look far enough ahead to see the whole pass
   let i=0;
   (function chunk(){
     const t0=performance.now();
@@ -6775,6 +6837,7 @@ function applyPrefs(){
   $('sw-notify').classList.toggle('on', prefs.notify);
   $('notify-groups').classList.toggle('show', prefs.notify);
   ['iss','stations','visual','rocket'].forEach(k=>{ const el=$('nt-'+k); if(el) el.classList.toggle('on', !!(prefs.notifyGroups&&prefs.notifyGroups[k])); });
+  { const el=$('nt-train'); if(el) el.classList.toggle('on', prefs.notifyTrain!==false); }
   if(typeof world!=='undefined' && world){
     applyAutoRotate();
     updateIssOrbit();
@@ -6841,6 +6904,9 @@ function initSettingsUI(){
       applyPrefs(); saveSettings();
       if(k==='rocket') scanLaunchAlerts(); else scanAlerts(); };
   });
+  { const sw=$('nt-train'); if(sw) (sw.closest('.stg')||sw).onclick=()=>{
+      prefs.notifyTrain=!(prefs.notifyTrain!==false); sfxToggle(prefs.notifyTrain);
+      applyPrefs(); saveSettings(); scanAlerts(); if(prefs.push) syncAlertSchedule(true); }; }
   $('settingsbtn').onclick=(e)=>{ e.stopPropagation(); $('accountmenu').classList.remove('open'); toggleSheet('settings'); };
   const sb=$('sharebtn'); if(sb) sb.onclick=shareApp;
   const snp=$('snapbtn'); if(snp) snp.onclick=shareSnapshot;
@@ -8067,7 +8133,7 @@ function collectSettings(){
   let zoom=null; try{ zoom=world.pointOfView().altitude; }catch(e){}
   return { groups, lat: observer?observer.lat:null, lng: observer?observer.lng:null, zoom,
     units: prefs.units, time: prefs.time, autorotate: prefs.autorotate, issPath: prefs.issPath, cutoff: prefs.cutoff, music: prefs.music,
-    notify: prefs.notify, notifyGroups: prefs.notifyGroups, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
+    notify: prefs.notify, notifyGroups: prefs.notifyGroups, notifyTrain: prefs.notifyTrain, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
     shareFeed: prefs.shareFeed, shareLoc: prefs.shareLoc, locPrecise: prefs.locPrecise,
     listed: prefs.listed, ranked: prefs.ranked,
     alertMinEl: prefs.alertMinEl, quiet: prefs.quiet, quietFrom: prefs.quietFrom, quietTo: prefs.quietTo, digest: prefs.digest,
@@ -8118,10 +8184,12 @@ function applySettings(s){
     if(typeof s.cutoff==='number') prefs.cutoff=s.cutoff;
     if(typeof s.notify==='boolean') prefs.notify=s.notify;
     if(s.notifyGroups && typeof s.notifyGroups==='object') prefs.notifyGroups=Object.assign({iss:true,stations:false,visual:false,rocket:true}, s.notifyGroups);
+    if(typeof s.notifyTrain==='boolean') prefs.notifyTrain=s.notifyTrain;
     if(Array.isArray(s.favs)){ const merged=new Set([...favs, ...s.favs]); favs=merged; prefs.favs=[...merged];
       try{ localStorage.setItem('satmap_favs', JSON.stringify(prefs.favs)); }catch(e){} }
     applyPrefs();
     reconcilePush();                    // re-subscribe this device if push is on but its subscription is missing
+    if(!pushPromptTried){ pushPromptTried=true; setTimeout(maybePromptPush, 4000); }   // once per session: nudge to grant permission if alerts are on but unpermitted
     if(prefs.borders) applyBorders();   // load + draw country borders if synced on
     if(prefs.notify) scanAlerts();
     if(s.groups){
