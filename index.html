@@ -973,6 +973,9 @@
     background:rgba(120,160,255,.04)}
   .idf-row.strong{border-color:rgba(87,224,138,.5);background:rgba(87,224,138,.1)}
   .idf-row.launch{border-color:rgba(255,107,53,.45);background:rgba(255,107,53,.09)}
+  .idf-row.idf-click{cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}
+  .idf-row.idf-click:hover{border-color:rgba(90,209,255,.6);box-shadow:0 0 0 1px rgba(90,209,255,.4),0 0 20px rgba(90,209,255,.18)}
+  .idf-go{margin-left:6px;color:var(--muted);font-weight:700}
   .idf-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
   .idf-n{font-size:14.5px;font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .idf-v{font-size:11px;color:var(--muted);flex:0 0 auto;text-transform:uppercase;letter-spacing:.4px}
@@ -2987,7 +2990,7 @@
 </script>
 
 <script>
-const BUILD = 'v228';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v229';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -9483,17 +9486,25 @@ function renderIdentify(res){
     h+='<div class="fr-note">Nothing we track was above your horizon then'+(res.wantAz!=null?' in that direction':'')+'.</div>';
   } else {
     h+=res.rows.map(r=>{
-      const v=idfVerdict(r, res.wantAz), strong=(v==='strong match');
-      return '<div class="idf-row'+(strong?' strong':'')+'">'+
-        '<div class="idf-top"><span class="idf-n">'+(r.train?'✨ ':'🛰️ ')+esc(r.label)+'</span>'+
+      const v=idfVerdict(r, res.wantAz), strong=(v==='strong match'), click=!!r.id;
+      return '<div class="idf-row'+(strong?' strong':'')+(click?' idf-click':'')+'"'+(click?(' data-id="'+esc(r.id)+'"'):'')+'>'+
+        '<div class="idf-top"><span class="idf-n">'+(r.train?'✨ ':'🛰️ ')+esc(r.label)+(click?'<span class="idf-go">›</span>':'')+'</span>'+
         '<span class="idf-v'+(strong?' ok':'')+'">'+v+'</span></div>'+
         '<div class="idf-m">'+azCompass(r.az)+' '+Math.round(r.az)+'° · alt '+Math.round(r.el)+'° · '+
-        (r.lit?'sunlit':'in Earth’s shadow')+(r.sep!=null?(' · '+Math.round(r.sep)+'° off'):'')+'</div></div>';
+        (r.lit?'sunlit':'in Earth’s shadow')+(r.sep!=null?(' · '+Math.round(r.sep)+'° off'):'')+
+        (click?' · tap to check on the map':'')+'</div></div>';
     }).join('');
   }
   h+='<button id="idf-uap" class="idf-uap">👁 Still unidentified — log it</button>';
   out.innerHTML=h;
   const b=$('idf-uap'); if(b) b.onclick=()=>openUapForm(res);
+  // Tap a suggested object → fly to it, highlight it, open its detail card (log from there).
+  out.querySelectorAll('.idf-row[data-id]').forEach(row=>row.onclick=()=>{
+    const s=SATS.find(x=>x.id===row.dataset.id); if(!s) return;
+    if(isMobile()) closeSheets();
+    selectSat(s);
+    const dt=$('d-seen-dt'); if(dt && res.ts){ dt.value=tsToLocalInput(res.ts); }   // pre-fill the log time with the identified moment
+  });
 }
 /* ---------- "Tonight's sky" digest ----------
    The one screen that answers "what should I go outside and look at tonight?".
