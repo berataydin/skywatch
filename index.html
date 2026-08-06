@@ -1420,6 +1420,29 @@
   .ach-item.secret{opacity:.72}
   .ach-item.secret .ach-ic{filter:none;opacity:.55}
   .ach-item.secret .ach-txt b{color:var(--muted)}
+  /* "Claim your username" onboarding nudge */
+  #unamenudge{position:fixed;inset:0;z-index:121;display:none;align-items:center;justify-content:center;padding:18px;
+    background:rgba(2,4,10,.8);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  #unamenudge.show{display:flex}
+  .unn-card{position:relative;width:min(400px,100%);max-height:90vh;overflow-y:auto;text-align:center;
+    background:var(--panel-solid);border:1px solid var(--border);border-radius:20px;padding:26px 22px 20px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  #unn-close{position:absolute;top:12px;right:14px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;border:1px solid var(--border);background:rgba(0,0,0,.35);color:#fff;cursor:pointer;font-size:15px}
+  .unn-ic{font-size:40px;line-height:1;margin-bottom:8px}
+  .unn-title{font-size:20px;font-weight:800;color:var(--text);margin-bottom:8px}
+  .unn-sub{font-size:13.5px;line-height:1.5;color:var(--muted);margin-bottom:16px}
+  .unn-benefits{list-style:none;margin:0 0 16px;padding:0;text-align:left;display:flex;flex-direction:column;gap:9px}
+  .unn-benefits li{display:flex;gap:11px;align-items:flex-start;padding:10px 12px;border-radius:12px;
+    border:1px solid var(--border);background:rgba(120,160,255,.06)}
+  .unn-benefits li>span{font-size:20px;line-height:1.2;flex:0 0 auto}
+  .unn-benefits li>div{display:flex;flex-direction:column;font-size:12.5px;line-height:1.4;color:var(--muted)}
+  .unn-benefits li>div b{color:var(--text);font-size:13.5px;margin-bottom:1px}
+  .unn-how{font-size:12.5px;color:var(--muted);margin-bottom:14px}
+  #unn-go{width:100%}
+  .unn-later{margin-top:10px;width:100%;background:transparent;border:none;color:var(--muted);
+    font-size:13px;font-weight:600;cursor:pointer;padding:8px}
+  .unn-later:hover{color:var(--text)}
   /* Origin story */
   .origin-story p{margin:0 0 13px;font-size:14px;line-height:1.62;color:var(--text)}
   .origin-story p em{color:var(--accent);font-style:italic}
@@ -2428,6 +2451,24 @@
   <ul id="pv-facts"></ul>
 </div>
 
+<div id="unamenudge">
+  <div class="unn-card">
+    <button id="unn-close" aria-label="Close">✕</button>
+    <div class="unn-ic">👋</div>
+    <div class="unn-title">Claim your stargazer name</div>
+    <div class="unn-sub">You’re signed in but haven’t picked a username yet. Grab one to unlock the social side of SkyWatch:</div>
+    <ul class="unn-benefits">
+      <li><span>👥</span><div><b>Friends</b>Add people and see where they’re watching from</div></li>
+      <li><span>🏆</span><div><b>Leaderboard</b>Rank against other stargazers by points</div></li>
+      <li><span>🎖️</span><div><b>Awards</b>Earn and show off badges for your sightings</div></li>
+      <li><span>💬</span><div><b>Chat &amp; feed</b>Share what you spot with friends</div></li>
+    </ul>
+    <div class="unn-how">Takes about 10 seconds — tap below, type a name, hit Save.</div>
+    <button id="unn-go" class="idf-go">👤 Choose a username</button>
+    <button id="unn-later" class="unn-later">Maybe later</button>
+  </div>
+</div>
+
 <div id="settings" class="panel">
   <div class="sheet-handle"></div>
   <div class="x" onclick="closeWindow('settings')" title="Close">✕</div>
@@ -2992,7 +3033,7 @@
 </script>
 
 <script>
-const BUILD = 'v234';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v235';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4781,7 +4822,7 @@ async function disablePush(){
    per-device — and Chrome/Android can silently drop one. So whenever the app thinks push is
    on but this device has no live subscription, quietly re-create it. Never prompts: it only
    runs when permission is already granted, so a fresh device still opts in via the toggle. */
-let pushReconciled=false, pushPromptTried=false;
+let pushReconciled=false, pushPromptTried=false, unameNudgeTried=false;
 async function reconcilePush(){
   if(pushReconciled || !prefs.push) return;
   if(!currentUser || !window.fb) return;
@@ -4812,6 +4853,7 @@ const PUSH_PROMPT_KEY='skywatch_pushprompt';
 function maybePromptPush(){
   try{
     if(!currentUser || prefs.push===false) return;                 // signed in, and hasn't opted out
+    if(!(myProfile && myProfile.username)) return;                 // pick a username first (that nudge takes priority)
     if(!pushSupported() || iosNeedsInstall()) return;              // can't push here anyway
     if(!('Notification' in window) || Notification.permission!=='default') return;  // already granted or denied
     if(localStorage.getItem(PUSH_PROMPT_KEY)) return;              // only ask once on this device
@@ -4820,6 +4862,31 @@ function maybePromptPush(){
       name:'Tap to turn on sky alerts', desc:'A heads-up before the ISS, a Starlink train or a bright pass flies over.',
       ms:12000, onTap:()=>{ enablePush(); } });
   }catch(e){}
+}
+/* Gentle onboarding nudge for signed-in users who haven't claimed a username yet — shows the
+   social benefits and how to set one up. Throttled so it's a nudge, not a nag. */
+const UNAME_NUDGE_KEY='skywatch_unamenudge', UNAME_NUDGE_GAP=3*86400000;   // at most once every ~3 days
+function showUsernameNudge(){
+  const m=$('unamenudge'); if(!m) return;
+  m.classList.add('show');
+  try{ localStorage.setItem(UNAME_NUDGE_KEY, String(Date.now())); }catch(e){}
+}
+function maybePromptUsername(){
+  try{
+    if(!currentUser) return;                                        // needs an account
+    if(myProfile && myProfile.username) return;                     // already has a username
+    const last=+(localStorage.getItem(UNAME_NUDGE_KEY)||0);
+    if(Date.now()-last < UNAME_NUDGE_GAP) return;                   // nudged recently — don't nag
+    showUsernameNudge();
+  }catch(e){}
+}
+function initUsernameNudge(){
+  const m=$('unamenudge'); if(!m) return;
+  const close=()=>m.classList.remove('show');
+  const c=$('unn-close'); if(c) c.onclick=close;
+  const l=$('unn-later'); if(l) l.onclick=close;
+  m.addEventListener('click', e=>{ if(e.target===m) close(); });   // tap the backdrop to dismiss
+  const g=$('unn-go'); if(g) g.onclick=()=>{ close(); openUserPanel(); };
 }
 /* Build the next N visible passes as ready-to-send payloads. Runs in slices so it
    never blocks a frame, exactly like scanAlerts. */
@@ -7425,6 +7492,7 @@ function renderAdmin(){
       '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
     '<div class="stg-sec">Maintenance</div>'+
     '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
+    '<div class="usr-row"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
     '<div class="idf-chips adm-nav">'+
       ['inbox','users','broadcast','flags','stats','admins'].map(v=>
         '<button data-v="'+v+'"'+(admView===v?' class="on"':'')+'>'+
@@ -7433,6 +7501,7 @@ function renderAdmin(){
     '</div><div id="adm-pane"></div>';
   const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
+  const tn=$('adm-testnudge'); if(tn) tn.onclick=()=>{ if(isMobile()) closeSheets(); else $('settings').classList.remove('open'); showUsernameNudge(); };
   el.querySelectorAll('.adm-nav button').forEach(b=>b.onclick=()=>{ admView=b.dataset.v; renderAdmin(); });
   const pane=$('adm-pane');
   if(admView==='inbox') admRenderInbox(pane);
@@ -8482,6 +8551,7 @@ function startSocial(user){
     // Self-heal the public summary once per session: older accounts have a usernames/{name} doc
     // whose score+awards were computed without the stat counters, so refresh it from the full profile.
     if(!publicSummarySynced && myProfile && myProfile.unameLower){ publicSummarySynced=true; setTimeout(syncPublicSummary, 1500); }
+    if(!unameNudgeTried){ unameNudgeTried=true; setTimeout(maybePromptUsername, 6000); }   // gentle "pick a username" nudge once per session
     if($('usermodal') && $('usermodal').classList.contains('show')) renderUserPanel();   // keep the User panel live
     if(feedScope==='mine') renderFeed();
     if(selectedLaunch) renderLaunchDetail(selectedLaunch);
@@ -8544,7 +8614,7 @@ function stopSocial(){
   if(unsubPings){ unsubPings(); unsubPings=null; }
   if(unsubFeedWatch){ unsubFeedWatch(); unsubFeedWatch=null; }
   Object.values(friendProfileUnsubs).forEach(u=>{ try{u();}catch(e){} }); friendProfileUnsubs={};
-  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear(); publicSummarySynced=false;
+  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear(); publicSummarySynced=false; unameNudgeTried=false;
   unlockQueue=[]; unlockBusy=false;   // the celebrated-set is stored per account, not reset here
   stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); stopChatWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
   rebuildSeenSet();   // clears the seen set on sign-out
@@ -10740,6 +10810,7 @@ function initMsgCompose(){
   wrap.onclick=e=>{ if(e.target===wrap) closeMsgCompose(); };   // backdrop closes
 }
 initMsgCompose();
+initUsernameNudge();
 
 /* ---------- Share a globe snapshot ---------- */
 async function shareSnapshot(){
@@ -10782,6 +10853,17 @@ async function loadAllUsers(force){
       if(!e.photoURL && p.photoURL) e.photoURL=p.photoURL;
       if(p.ts) e.lastSeen=p.ts;
     });
+    // Admins can read every profile (which each client fills with displayName/photo, even on older
+    // builds), so fill in any names that presence didn't have yet — no waiting for a user to update.
+    if(isAdminUser){ try{
+      const profSnap=await getDocs(query(collection(db,'profiles'), limit(1500)));
+      profSnap.docs.forEach(d=>{ const p=d.data()||{}, uid=d.id;
+        let e=byUid.get(uid); if(!e){ e={uid}; byUid.set(uid, e); }
+        if(!e.username && p.username) e.username=p.username;
+        if(!e.username && !e.displayName && p.displayName) e.displayName=p.displayName;
+        if(!e.photoURL && p.photoURL) e.photoURL=p.photoURL;
+      });
+    }catch(e){} }
     allUsers = [...byUid.values()].filter(u=>u.uid && u.uid!==currentUser.uid);
     allUsersAt=Date.now();
     renderDirectory(); renderLeaderboard();
