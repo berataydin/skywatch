@@ -1263,8 +1263,8 @@
     #topbar{padding:calc(env(safe-area-inset-top) + 8px) 12px 8px;gap:10px;
       background:linear-gradient(180deg,rgba(3,6,15,.92),rgba(3,6,15,0))}
     #brand h1{font-size:16px} #brand .tag{display:none}
-    #stat{gap:10px} #stat .stat{min-width:52px} .stat span{font-size:15px} .stat b{font-size:8.5px}
-    .stat.ov{display:none}
+    #stat{gap:9px} #stat .stat{min-width:46px} .stat span{font-size:15px} .stat b{font-size:8.5px}
+    .stat.ov{display:block}   /* show the "Above you" overhead count on mobile too */
     .on-ct{font-size:11px}
 
     /* Backdrop behind open sheets */
@@ -2990,7 +2990,7 @@
 </script>
 
 <script>
-const BUILD = 'v231';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v232';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
