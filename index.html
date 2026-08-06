@@ -3037,7 +3037,7 @@
 </script>
 
 <script>
-const BUILD = 'v236';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v237';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3395,10 +3395,11 @@ function parseTleText(text, g){
   return out;
 }
 // Shared TLE snapshots: a GitHub Action refreshes these from Celestrak a few times a day and
-// commits them next to the app, so clients read ONE cached copy from our own origin instead of
-// every visitor hitting Celestrak directly. If a snapshot is missing (fresh deploy before the
-// Action has run) or unreachable, we transparently fall back to Celestrak — nothing breaks.
-const TLE_SNAP_BASE = new URL('data/tle/', document.baseURI).href;
+// force-pushes them to a dedicated `data` branch, served here through jsDelivr's CDN. Clients read
+// ONE cached copy from the CDN instead of every visitor hitting Celestrak — and because the branch
+// is squashed + force-pushed, the full Starlink set costs the repo/Pages nothing. If a snapshot is
+// missing (before the Action's first run) or unreachable, we fall back to Celestrak — nothing breaks.
+const TLE_SNAP_BASE = 'https://cdn.jsdelivr.net/gh/nuno927-tech/skywatch@data/tle/';
 function celestrakUrl(g){ return 'https://celestrak.org/NORAD/elements/gp.php?'+(g.catnr?'CATNR='+g.catnr:'GROUP='+g.id)+'&FORMAT=tle'; }
 function groupTleUrls(g){ return [ TLE_SNAP_BASE+encodeURIComponent(g.id)+'.txt', celestrakUrl(g) ]; }
 async function fetchGroup(g){
