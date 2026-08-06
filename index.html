@@ -237,11 +237,13 @@
   @keyframes selpulse{0%{transform:scale(.7);opacity:.9}70%{opacity:.2}100%{transform:scale(2.6);opacity:0}}
 
   /* Floating "center on me" button */
-  #gotome,#arbtn{position:fixed;right:16px;bottom:16px;z-index:25;width:52px;height:52px;border-radius:50%;
+  #gotome,#arbtn{position:fixed;right:16px;bottom:22px;z-index:25;width:52px;height:52px;border-radius:50%;
     display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;
     background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
     border:1px solid var(--border);color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.5);transition:.15s}
-  #arbtn{right:82px}                                   /* sits just left of the location button */
+  #arbtn{left:16px;right:auto;flex-direction:column;gap:1px}   /* left edge, in line with the location button */
+  #arbtn .ar-ic{font-size:17px;line-height:1}
+  #arbtn .ar-lb{font-size:10px;font-weight:800;letter-spacing:.6px;line-height:1}
   #gotome:hover,#arbtn:hover{background:rgba(90,209,255,.18);box-shadow:var(--glow)}
   #gotome:active,#arbtn:active{transform:scale(.92)}
   #gotome.busy{color:#fff;animation:locpulse 1s ease-in-out infinite}
@@ -1298,8 +1300,8 @@
 
     /* Recenter FAB sits above the toolbar */
     /* clear the floating nav bar (bar sits ~68px tall from the safe-area edge) */
-    #gotome,#arbtn{bottom:calc(env(safe-area-inset-bottom) + 104px);right:12px;width:50px;height:50px}
-    #arbtn{right:74px}
+    #gotome,#arbtn{bottom:calc(env(safe-area-inset-bottom) + 110px);right:12px;width:50px;height:50px}
+    #arbtn{left:12px;right:auto}
 
     /* Floating bottom bar */
     #mbar{display:flex;position:fixed;left:50%;transform:translateX(-50%);
@@ -2157,7 +2159,7 @@
     #detail{max-height:var(--sheet-h);
       padding-bottom:calc(env(safe-area-inset-bottom) + var(--bar-h) + 14px)}
     /* Floating controls sit above the bar too */
-    #gotome,#arbtn{bottom:calc(env(safe-area-inset-bottom) + var(--bar-h) + 14px)}
+    #gotome,#arbtn{bottom:calc(env(safe-area-inset-bottom) + var(--bar-h) + 22px)}
     #installpop{bottom:calc(env(safe-area-inset-bottom) + var(--bar-h) + 12px)}
   }
   @media (prefers-reduced-motion:reduce){
@@ -2816,7 +2818,7 @@
   <button id="installbtn">⬇ Install app</button>
 </div>
 
-<button id="arbtn" title="Point &amp; identify — live AR sky view">🔭</button>
+<button id="arbtn" title="Point &amp; identify — live AR sky view"><span class="ar-ic">🔭</span><span class="ar-lb">AR</span></button>
 <button id="gotome" title="Center on my location">⌖</button>
 <div id="loc-hint">Set your location ›</div>
 
@@ -2990,7 +2992,7 @@
 </script>
 
 <script>
-const BUILD = 'v232';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v234';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -8560,9 +8562,9 @@ function startPresence(){
     // Public presence ping — powers the online counter AND the Community directory (this is the
     // only world-readable per-user record, so it must carry a name/photo to list people who
     // haven't picked a username yet; profiles are friends-only).
+    const acctName=(myProfile&&myProfile.username)||currentUser.displayName||(currentUser.email||'').split('@')[0]||'';   // email sign-ups have no displayName → use the email handle
     window.fb.setDoc(window.fb.doc(window.fb.db,'presence',currentUser.uid),
-      { ts:now, name:(myProfile&&myProfile.username)||currentUser.displayName||'',
-        photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'' }, {merge:true}).catch(()=>{}); };
+      { ts:now, name:acctName, photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'' }, {merge:true}).catch(()=>{}); };
   beat(); presenceTimer=setInterval(beat, 60000);
 }
 function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer=null; } }
