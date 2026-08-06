@@ -2990,7 +2990,7 @@
 </script>
 
 <script>
-const BUILD = 'v229';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v231';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -8557,8 +8557,12 @@ function startPresence(){
     const now=Date.now();
     window.fb.setDoc(window.fb.doc(window.fb.db,'profiles',currentUser.uid),
       {lastSeen:now, online:true, displayName:currentUser.displayName||'', photoURL:currentUser.photoURL||''}, {merge:true}).catch(()=>{});
-    // public presence ping (timestamp only) for the global user counter
-    window.fb.setDoc(window.fb.doc(window.fb.db,'presence',currentUser.uid), {ts:now}, {merge:true}).catch(()=>{}); };
+    // Public presence ping — powers the online counter AND the Community directory (this is the
+    // only world-readable per-user record, so it must carry a name/photo to list people who
+    // haven't picked a username yet; profiles are friends-only).
+    window.fb.setDoc(window.fb.doc(window.fb.db,'presence',currentUser.uid),
+      { ts:now, name:(myProfile&&myProfile.username)||currentUser.displayName||'',
+        photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'' }, {merge:true}).catch(()=>{}); };
   beat(); presenceTimer=setInterval(beat, 60000);
 }
 function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer=null; } }
@@ -10563,7 +10567,7 @@ function frTab(name){
   f.classList.toggle('tab-chat', name==='chat');
   [['friends','frt-friends'],['community','frt-community'],['chat','frt-chat']].forEach(([n,id])=>{ const b=$(id); if(b) b.classList.toggle('on', n===name); });
   const t=$('fr-title'); if(t) t.textContent = name==='community'?'Community':name==='chat'?'Chat':'Friends';
-  if(name==='community'){ renderDirectory(); if(currentUser && !allUsers.length) loadAllUsers(); }
+  if(name==='community'){ renderDirectory(); if(currentUser) loadAllUsers(); }   // refresh on open (throttled) so newly-registered users appear
   else if(name==='chat'){ renderChatHome(); updateChatBadge(); }
 }
 function showAdd(on){ frTab(on?'community':'friends'); }   // back-compat alias
@@ -10756,12 +10760,28 @@ function localInputToTs(v){ const t=Date.parse(v); if(isNaN(t)) return Date.now(
 function fmtSeen(ts){ return new Date(ts).toLocaleString([], {month:'short', day:'numeric', year:'numeric',
   hour:'numeric', minute:'2-digit', hour12: prefs.time==='12'}); }
 function seenEntry(id){ return (myProfile && Array.isArray(myProfile.seen)) ? myProfile.seen.find(x=>x.id===id) : null; }
-async function loadAllUsers(){
+let allUsersAt=0;
+async function loadAllUsers(force){
   if(!window.fb || !currentUser) return;
+  if(!force && allUsers.length && Date.now()-allUsersAt < 45000) return;   // fresh enough — skip the re-read
   const {db, collection, getDocs, query, limit}=window.fb;
   try{
-    const snap=await getDocs(query(collection(db,'usernames'), limit(300)));
-    allUsers = snap.docs.map(d=>d.data()).filter(u=>u && u.uid && u.uid!==currentUser.uid);
+    // usernames = users who picked a name (rich: username, badges, score). presence = EVERY signed-in
+    // account (world-readable), so username-less newcomers show up too. Merge them by uid.
+    const [unameSnap, presSnap] = await Promise.all([
+      getDocs(query(collection(db,'usernames'), limit(500))),
+      getDocs(query(collection(db,'presence'), limit(1000)))
+    ]);
+    const byUid=new Map();
+    unameSnap.docs.forEach(d=>{ const u=d.data(); if(u && u.uid) byUid.set(u.uid, Object.assign({}, u)); });
+    presSnap.docs.forEach(d=>{ const p=d.data()||{}, uid=d.id;
+      let e=byUid.get(uid); if(!e){ e={uid}; byUid.set(uid, e); }
+      if(!e.username && p.name) e.displayName=p.name;         // no username → show their display name
+      if(!e.photoURL && p.photoURL) e.photoURL=p.photoURL;
+      if(p.ts) e.lastSeen=p.ts;
+    });
+    allUsers = [...byUid.values()].filter(u=>u.uid && u.uid!==currentUser.uid);
+    allUsersAt=Date.now();
     renderDirectory(); renderLeaderboard();
   }catch(e){ console.warn('directory', e); const el=$('fr-dir'); if(el) el.innerHTML='<div class="fr-note">Couldn’t load the user list.</div>'; }
 }
@@ -10770,9 +10790,10 @@ function renderDirectory(){
   if(!currentUser){ el.innerHTML=''; return; }
   const friendIds=new Set(friends.map(f=>f.uid)), reqIds=new Set(incomingReqs.map(r=>r.uid));
   const f=(dirFilter||'').toLowerCase().replace(/^@/,'');
-  const list=allUsers.filter(u=> !u.blocked && u.listed!==false && (!f || (u.username||'').toLowerCase().includes(f)))
-    .sort((a,b)=>(a.username||'').localeCompare(b.username||''));
-  if(!list.length){ el.innerHTML='<div class="fr-note">'+(allUsers.length?'No match.':'No other users have a username yet.')+'</div>'; return; }
+  const dispName=u=> u.username ? ('@'+u.username) : (u.displayName||'New stargazer');
+  const list=allUsers.filter(u=> !u.blocked && u.listed!==false && (!f || ((u.username||'')+' '+(u.displayName||'')).toLowerCase().includes(f)))
+    .sort((a,b)=>{ const an=a.username?0:1, bn=b.username?0:1; return an-bn || dispName(a).localeCompare(dispName(b)); });   // named users first, then newcomers
+  if(!list.length){ el.innerHTML='<div class="fr-note">'+(allUsers.length?'No match.':'No other stargazers yet.')+'</div>'; return; }
   el.innerHTML=list.slice(0,150).map(u=>{
     let tag;
     if(friendIds.has(u.uid)) tag='<span class="fr-tag">Friend ✓</span>';
@@ -10780,8 +10801,8 @@ function renderDirectory(){
     else if(sentRequests.has(u.uid)) tag='<span class="fr-tag">Requested</span>';
     else tag='<span class="fr-tag">hold to add</span>';
     return '<div class="fr-item fr-du" data-uid="'+u.uid+'" title="Long-press to send a friend request">'+
-      '<div class="fr-av">'+(u.photoURL?('<img src="'+u.photoURL+'" referrerpolicy="no-referrer">'):'👤')+'</div>'+
-      '<div class="fr-nm">@'+(u.username||'user')+'</div>'+tag+'</div>';
+      '<div class="fr-av">'+(u.photoURL?('<img src="'+esc(u.photoURL)+'" referrerpolicy="no-referrer">'):'👤')+'</div>'+
+      '<div class="fr-nm">'+esc(dispName(u))+'</div>'+tag+'</div>';
   }).join('');
   el.querySelectorAll('.fr-du').forEach(n=>{
     const u=allUsers.find(x=>x.uid===n.dataset.uid); if(!u) return;
@@ -10848,7 +10869,7 @@ function renderLeaderboard(){
   const el=$('fr-leader'); if(!el) return;
   if(!currentUser){ el.innerHTML='<div class="fr-note">Sign in to enter the rankings.</div>'; return; }
   const friendIds=new Set(friends.map(f=>f.uid));
-  let rows=allUsers.filter(u=>u.ranked!==false && (!lbFriendsOnly || friendIds.has(u.uid)))
+  let rows=allUsers.filter(u=>u.username && u.ranked!==false && (!lbFriendsOnly || friendIds.has(u.uid)))   // leaderboard is named players only
     .map(u=>({username:u.username, icon:u.icon||'', badges:u.badges||0, score:u.score||0,
       sightings:u.sightings||0, streak:u.streak||0, uid:u.uid, ach:u.ach||[]}));
   if(myProfile && myProfile.username){ const st=statsFromProfile(myProfile), e=achEarned(st);
@@ -11140,7 +11161,7 @@ function initFriendsUI(){
   if($('fr-showall')) $('fr-showall').onclick=showAllFriends;
   const rf=$('fr-refresh');
   if(rf) rf.onclick=async ()=>{ if(!currentUser){ showErr('Sign in to load users.'); return; }
-    rf.classList.add('spin'); await loadAllUsers(); rf.classList.remove('spin'); showToast('User list refreshed'); };
+    rf.classList.add('spin'); await loadAllUsers(true); rf.classList.remove('spin'); showToast('User list refreshed'); };
   // Friends panel tabs: Friends / Community / Chat (frTab is defined globally).
   if($('frt-friends'))   $('frt-friends').onclick=()=>frTab('friends');
   if($('frt-community')) $('frt-community').onclick=()=>frTab('community');
@@ -11170,7 +11191,7 @@ function initFriendsUI(){
   if($('bdt-you'))  $('bdt-you').onclick=()=>boardTab('you');
   if($('bdt-rank')) $('bdt-rank').onclick=()=>boardTab('rank');
   if($('lb-friends-toggle')) $('lb-friends-toggle').onclick=(e)=>{ lbFriendsOnly=!lbFriendsOnly; e.currentTarget.classList.toggle('on', lbFriendsOnly); renderLeaderboard(); };
-  if($('lb-refresh')) $('lb-refresh').onclick=async (e)=>{ if(!currentUser) return; e.currentTarget.textContent='…'; await loadAllUsers(); e.currentTarget.textContent='⟳ Refresh'; renderLeaderboard(); };
+  if($('lb-refresh')) $('lb-refresh').onclick=async (e)=>{ if(!currentUser) return; e.currentTarget.textContent='…'; await loadAllUsers(true); e.currentTarget.textContent='⟳ Refresh'; renderLeaderboard(); };
   renderMe(); renderFriends(); renderRequests(); renderDirectory(); renderLeaderboard(); renderHero();
 }
 
