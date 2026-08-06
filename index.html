@@ -1443,6 +1443,10 @@
   .unn-later{margin-top:10px;width:100%;background:transparent;border:none;color:var(--muted);
     font-size:13px;font-weight:600;cursor:pointer;padding:8px}
   .unn-later:hover{color:var(--text)}
+  /* Admin Users roster */
+  #adm-ulist{display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:52vh;overflow-y:auto}
+  .adm-urow{width:100%;text-align:left;background:transparent;font:inherit;color:inherit;cursor:pointer}
+  .adm-urow:hover{background:rgba(120,160,255,.1)}
   /* Origin story */
   .origin-story p{margin:0 0 13px;font-size:14px;line-height:1.62;color:var(--text)}
   .origin-story p em{color:var(--accent);font-style:italic}
@@ -3033,7 +3037,7 @@
 </script>
 
 <script>
-const BUILD = 'v235';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v236';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7558,44 +7562,88 @@ async function admRenderInbox(pane){
   admWire(pane);
 }
 /* ---- 3 + 4 + 5 + 6 + 7 + 12 + 13: user lookup and the actions on a user ---- */
+let admAllUsers=[], admAllUsersAt=0;
 function admRenderUsers(pane){
   pane.innerHTML=
-    '<div class="usr-row"><input id="adm-q" placeholder="@username" autocomplete="off" />'+
-      '<button id="adm-go">Find</button></div>'+
-    '<div id="adm-user"></div>';
-  $('adm-go').onclick=admFind;
-  $('adm-q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); admFind(); } });
+    '<div class="usr-row"><input id="adm-q" placeholder="Search name, @username or ID…" autocomplete="off" /></div>'+
+    '<div id="adm-user"></div>'+
+    '<div class="usr-note" id="adm-ulist-h" style="margin-top:12px">All users</div>'+
+    '<div id="adm-ulist"><div class="fr-note">Loading…</div></div>';
+  const q=$('adm-q');
+  q.addEventListener('input', admRenderUserList);
+  q.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); admRenderUserList(); } });
   if(admLookup) admShowUser();
+  admLoadUsersList();
 }
-async function admFind(){
-  const raw=($('adm-q').value||'').trim().replace(/^@/,'').toLowerCase();
-  const box=$('adm-user');
-  if(!raw){ box.innerHTML=''; return; }
-  box.innerHTML='<div class="fr-note">Looking up…</div>';
+// Admins can read every profile + presence, so build a full roster (incl. accounts with no username).
+async function admLoadUsersList(force){
+  if(!window.fb) return;
+  if(!force && admAllUsers.length && Date.now()-admAllUsersAt < 60000){ admRenderUserList(); return; }
+  const {db, collection, getDocs, query, limit}=window.fb;
+  try{
+    const [profSnap, presSnap] = await Promise.all([
+      getDocs(query(collection(db,'profiles'), limit(2000))),
+      getDocs(query(collection(db,'presence'), limit(2000)))
+    ]);
+    const byUid=new Map();
+    profSnap.docs.forEach(d=>{ const p=d.data()||{}; byUid.set(d.id,
+      { uid:d.id, username:p.username||'', displayName:p.displayName||'', photoURL:p.photoURL||'', lastSeen:p.lastSeen||0 }); });
+    presSnap.docs.forEach(d=>{ const p=d.data()||{}; let e=byUid.get(d.id);
+      if(!e){ e={uid:d.id, username:'', displayName:'', photoURL:'', lastSeen:0}; byUid.set(d.id,e); }
+      if(!e.displayName && p.name) e.displayName=p.name;
+      if(!e.photoURL && p.photoURL) e.photoURL=p.photoURL;
+      if(p.ts && p.ts>(e.lastSeen||0)) e.lastSeen=p.ts; });
+    admAllUsers=[...byUid.values()]; admAllUsersAt=Date.now();
+    admRenderUserList();
+  }catch(e){ const el=$('adm-ulist'); if(el) el.innerHTML='<div class="fr-note">Couldn’t load users: '+esc(e.code||e.message||e)+'</div>'; }
+}
+function admRenderUserList(){
+  const el=$('adm-ulist'); if(!el) return;
+  const q=(($('adm-q')&&$('adm-q').value)||'').trim().toLowerCase().replace(/^@/,'');
+  let list=admAllUsers.slice();
+  if(q) list=list.filter(u=> (u.username||'').toLowerCase().includes(q) || (u.displayName||'').toLowerCase().includes(q) || u.uid.toLowerCase().includes(q));
+  list.sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));   // most recently active first
+  const hd=$('adm-ulist-h'); if(hd) hd.textContent='All users · '+admAllUsers.length+(q?(' · '+list.length+' match'):'');
+  if(!list.length){ el.innerHTML='<div class="fr-note">No match.</div>'; return; }
+  el.innerHTML=list.slice(0,150).map(u=>{
+    const nm = u.username ? ('@'+esc(u.username)) : (esc(u.displayName)||'unnamed');
+    const sub = ((u.username && u.displayName)?(esc(u.displayName)+' · '):'') + esc(u.uid.slice(0,8))+'…' + (u.username?'':' · no username');
+    return '<button class="fr-item adm-urow" data-uid="'+esc(u.uid)+'">'+
+      '<span class="fr-av">'+(u.photoURL?('<img src="'+esc(u.photoURL)+'" referrerpolicy="no-referrer">'):'👤')+'</span>'+
+      '<span class="fr-nm">'+nm+'<small class="fr-sub-ln">'+sub+'</small></span></button>';
+  }).join('') + (list.length>150?('<div class="fr-note">…and '+(list.length-150)+' more — refine the search</div>'):'');
+  el.querySelectorAll('.adm-urow').forEach(row=>row.onclick=()=>admOpenUser(row.dataset.uid));
+}
+async function admOpenUser(uid){
+  const box=$('adm-user'); if(box) box.innerHTML='<div class="fr-note">Loading…</div>';
   try{
     const {db, doc, getDoc}=window.fb;
-    const u=await getDoc(doc(db,'usernames',raw));
-    if(!u.exists()){ box.innerHTML='<div class="fr-note">No user @'+esc(raw)+'.</div>'; admLookup=null; return; }
-    const uid=u.data().uid;
     const pr=await getDoc(doc(db,'profiles',uid));
-    admLookup={ uid, uname:u.data().username||raw, reg:u.data(), profile: pr.exists()?pr.data():null };
+    const prof=pr.exists()?pr.data():{};
+    const uname=prof.username||'';
+    let reg={};
+    if(uname){ try{ const u=await getDoc(doc(db,'usernames',uname.toLowerCase())); if(u.exists()) reg=u.data(); }catch(e){} }
+    admLookup={ uid, uname: uname || prof.displayName || 'unnamed', reg, profile:prof, noUsername:!uname };
     admShowUser();
-  }catch(e){ box.innerHTML='<div class="fr-note">Lookup failed: '+esc(e.code||e.message)+'</div>'; }
+    box.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }catch(e){ if(box) box.innerHTML='<div class="fr-note">Couldn’t open: '+esc(e.code||e.message||e)+'</div>'; }
 }
 function admShowUser(){
   const box=$('adm-user'); if(!box || !admLookup) return;
   const p=admLookup.profile||{}, st=statsFromProfile(p), earned=achEarned(st);
   const earnedSet=new Set(earned.map(a=>a.id));
+  const reg=admLookup.reg||{};
   box.innerHTML=
     '<div class="adm-card">'+
-      '<div class="adm-top"><b>@'+esc(admLookup.uname)+'</b><span class="adm-st">'+esc(admLookup.uid.slice(0,10))+'…</span></div>'+
+      '<div class="adm-top"><b>'+(admLookup.noUsername?'':'@')+esc(admLookup.uname)+'</b><span class="adm-st">'+esc(admLookup.uid.slice(0,10))+'…</span></div>'+
+      (admLookup.noUsername?'<div class="dev-row"><span class="dev-k">Username</span><span class="dev-v warn">not set yet</span></div>':'')+
       '<div class="dev-row"><span class="dev-k">Objects / sightings</span><span class="dev-v">'+st.badges+' / '+st.sightings+'</span></div>'+
       '<div class="dev-row"><span class="dev-k">Awards</span><span class="dev-v">'+earned.length+' of '+ACH.length+'</span></div>'+
       '<div class="dev-row"><span class="dev-k">Best streak</span><span class="dev-v">'+st.maxStreak+'</span></div>'+
       '<div class="dev-row"><span class="dev-k">Friends</span><span class="dev-v">'+(p.friendCount||0)+'</span></div>'+
       '<div class="dev-row"><span class="dev-k">Last seen</span><span class="dev-v">'+(p.lastSeen?fmtSeen(p.lastSeen):'—')+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Blocked</span><span class="dev-v '+(admLookup.reg.blocked?'bad':'ok')+'">'+
-        (admLookup.reg.blocked?'yes':'no')+'</span></div>'+
+      '<div class="dev-row"><span class="dev-k">Blocked</span><span class="dev-v '+(reg.blocked?'bad':'ok')+'">'+
+        (reg.blocked?'yes':'no')+'</span></div>'+
     '</div>'+
     admSec('Awards')+
     '<div class="usr-row"><select id="adm-award">'+
@@ -7609,7 +7657,7 @@ function admShowUser(){
     '</div>'+
     admSec('Moderation')+
     '<div class="adm-acts">'+
-      admBtn('u-block', admLookup.reg.blocked?'Unblock username':'Block username', admLookup.reg.blocked?'':'danger')+
+      (admLookup.noUsername?'':admBtn('u-block', reg.blocked?'Unblock username':'Block username', reg.blocked?'':'danger'))+
       admBtn('u-snapshot','Snapshot sightings')+
       admBtn('u-restore','Restore last snapshot','danger')+
     '</div>';
