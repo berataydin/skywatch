@@ -1421,9 +1421,9 @@
   .ach-item.secret .ach-ic{filter:none;opacity:.55}
   .ach-item.secret .ach-txt b{color:var(--muted)}
   /* "Claim your username" onboarding nudge */
-  #unamenudge{position:fixed;inset:0;z-index:121;display:none;align-items:center;justify-content:center;padding:18px;
+  #unamenudge,#installnudge{position:fixed;inset:0;z-index:121;display:none;align-items:center;justify-content:center;padding:18px;
     background:rgba(2,4,10,.8);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-  #unamenudge.show{display:flex}
+  #unamenudge.show,#installnudge.show{display:flex}
   .unn-card{position:relative;width:min(400px,100%);max-height:90vh;overflow-y:auto;text-align:center;
     background:var(--panel-solid);border:1px solid var(--border);border-radius:20px;padding:26px 22px 20px;
     box-shadow:0 20px 60px rgba(0,0,0,.6)}
@@ -2472,6 +2472,22 @@
     <button id="unn-later" class="unn-later">Maybe later</button>
   </div>
 </div>
+<div id="installnudge">
+  <div class="unn-card">
+    <button id="inn-close" aria-label="Close">✕</button>
+    <div class="unn-ic">📲</div>
+    <div class="unn-title">Add SkyWatch to your phone</div>
+    <div class="unn-sub">Install it as an app for a smoother, full-screen experience — and it&rsquo;s the only way to get pass alerts on your phone.</div>
+    <ul class="unn-benefits">
+      <li><span>⚡</span><div><b>Opens instantly</b>Full-screen, no browser bars, and works offline</div></li>
+      <li><span>🔔</span><div><b>Real sky alerts</b>A heads-up before the ISS or a Starlink train flies over</div></li>
+      <li><span>🏠</span><div><b>One tap away</b>Lives on your home screen beside your other apps</div></li>
+    </ul>
+    <div class="unn-how" id="inn-how"></div>
+    <button id="inn-go" class="idf-go">📲 Install now</button>
+    <button id="inn-later" class="unn-later">Maybe later</button>
+  </div>
+</div>
 
 <div id="settings" class="panel">
   <div class="sheet-handle"></div>
@@ -3037,7 +3053,7 @@
 </script>
 
 <script>
-const BUILD = 'v238';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v239';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4831,7 +4847,7 @@ async function disablePush(){
    per-device — and Chrome/Android can silently drop one. So whenever the app thinks push is
    on but this device has no live subscription, quietly re-create it. Never prompts: it only
    runs when permission is already granted, so a fresh device still opts in via the toggle. */
-let pushReconciled=false, pushPromptTried=false, unameNudgeTried=false;
+let pushReconciled=false, pushPromptTried=false, unameNudgeTried=false, installNudgeTried=false;
 async function reconcilePush(){
   if(pushReconciled || !prefs.push) return;
   if(!currentUser || !window.fb) return;
@@ -4896,6 +4912,44 @@ function initUsernameNudge(){
   const l=$('unn-later'); if(l) l.onclick=close;
   m.addEventListener('click', e=>{ if(e.target===m) close(); });   // tap the backdrop to dismiss
   const g=$('unn-go'); if(g) g.onclick=()=>{ close(); openUserPanel(); };
+}
+/* Gentle nudge for mobile visitors still on the web build (not installed to the home screen).
+   Installing is also the only way to get push alerts on a phone, so it's worth a soft prompt.
+   Platform-aware, throttled, and never shown once the app is running standalone. */
+const INSTALL_NUDGE_KEY='skywatch_installnudge', INSTALL_NUDGE_GAP=5*86400000;   // at most once every ~5 days
+function showInstallNudge(){
+  const m=$('installnudge'); if(!m) return;
+  const how=$('inn-how'), go=$('inn-go');
+  if(isIOS()){
+    if(how) how.innerHTML='On iPhone/iPad: tap the Share button <b>⎋</b>, then <b>Add to Home Screen</b>.';
+    if(go) go.style.display='none';                 // iOS can't trigger the install programmatically
+  } else if(deferredPrompt){
+    if(how) how.textContent='Tap Install and confirm — it only takes a couple of seconds.';
+    if(go){ go.style.display=''; go.textContent='📲 Install now'; }
+  } else {
+    if(how) how.innerHTML='Open your browser menu and choose <b>Install app</b> / <b>Add to Home screen</b>.';
+    if(go) go.style.display='none';
+  }
+  m.classList.add('show');
+  try{ localStorage.setItem(INSTALL_NUDGE_KEY, String(Date.now())); }catch(e){}
+}
+function maybePromptInstall(){
+  try{
+    if(!isMobileUA() || isStandalone()) return;       // mobile web only, and not already installed
+    if(!isIOS() && !deferredPrompt) return;           // Android/desktop: only when actually installable
+    const un=$('unamenudge'); if(un && un.classList.contains('show')) return;   // don't stack modals
+    const last=+(localStorage.getItem(INSTALL_NUDGE_KEY)||0);
+    if(Date.now()-last < INSTALL_NUDGE_GAP) return;   // nudged recently — don't nag
+    showInstallNudge();
+  }catch(e){}
+}
+function initInstallNudge(){
+  const m=$('installnudge'); if(!m) return;
+  const close=()=>m.classList.remove('show');
+  const c=$('inn-close'); if(c) c.onclick=close;
+  const l=$('inn-later'); if(l) l.onclick=close;
+  m.addEventListener('click', e=>{ if(e.target===m) close(); });   // tap the backdrop to dismiss
+  const g=$('inn-go'); if(g) g.onclick=async ()=>{ close(); try{ await promptAppInstall(); }catch(e){} };
 }
 /* Build the next N visible passes as ready-to-send payloads. Runs in slices so it
    never blocks a frame, exactly like scanAlerts. */
@@ -7501,16 +7555,14 @@ function renderAdmin(){
       '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
     '<div class="stg-sec">Maintenance</div>'+
     '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
-    '<div class="usr-row"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
     '<div class="idf-chips adm-nav">'+
-      ['inbox','users','broadcast','flags','stats','admins'].map(v=>
+      ['inbox','users','broadcast','flags','stats','admins','notify'].map(v=>
         '<button data-v="'+v+'"'+(admView===v?' class="on"':'')+'>'+
-        ({inbox:'📥 Inbox',users:'👤 Users',broadcast:'📣 Broadcast',flags:'🚩 Flags',stats:'📊 Stats',admins:'🛡 Admins'})[v]+
+        ({inbox:'📥 Inbox',users:'👤 Users',broadcast:'📣 Broadcast',flags:'🚩 Flags',stats:'📊 Stats',admins:'🛡 Admins',notify:'🔔 Notifications'})[v]+
         '</button>').join('')+
     '</div><div id="adm-pane"></div>';
   const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
-  const tn=$('adm-testnudge'); if(tn) tn.onclick=()=>{ if(isMobile()) closeSheets(); else $('settings').classList.remove('open'); showUsernameNudge(); };
   el.querySelectorAll('.adm-nav button').forEach(b=>b.onclick=()=>{ admView=b.dataset.v; renderAdmin(); });
   const pane=$('adm-pane');
   if(admView==='inbox') admRenderInbox(pane);
@@ -7518,7 +7570,18 @@ function renderAdmin(){
   else if(admView==='broadcast') admRenderBroadcast(pane);
   else if(admView==='flags') admRenderFlags(pane);
   else if(admView==='stats') admRenderStats(pane);
+  else if(admView==='notify') admRenderNotify(pane);
   else admRenderAdmins(pane);
+}
+/* Notifications tab — preview the gentle onboarding nudges without waiting for their triggers. */
+function admRenderNotify(pane){
+  const dismiss=()=>{ if(isMobile()) closeSheets(); else $('settings').classList.remove('open'); };
+  pane.innerHTML=
+    '<div class="usr-note">Preview the gentle nudges shown to users. These bypass the normal timing/throttling so you can see them on demand.</div>'+
+    '<div class="usr-row" style="margin-top:10px"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
+    '<div class="usr-row"><button id="adm-testinstall" class="usr-btn">📲 Preview install nudge</button></div>';
+  const tn=$('adm-testnudge'); if(tn) tn.onclick=()=>{ dismiss(); showUsernameNudge(); };
+  const ti=$('adm-testinstall'); if(ti) ti.onclick=()=>{ dismiss(); showInstallNudge(); };
 }
 /* ---- 1 + 2: feedback inbox, with the reporter's diagnostics attached ---- */
 async function admLoadFeedback(){
@@ -8212,6 +8275,7 @@ function dismissInstallPop(remember){
   if(remember){ try{ localStorage.setItem('satmap_install_dismissed','1'); }catch(e){} }
 }
 function maybeShowInstallPop(){
+  return;   // superseded by the richer #installnudge modal (maybePromptInstall); keep the fn so callers/init don't break
   if(installPopShown) return;
   if($('onboard') && $('onboard').classList.contains('show')) return;   // don't collide with the tour
   if(!isMobileUA() || isStandalone()) return;
@@ -8605,6 +8669,7 @@ function startSocial(user){
     // whose score+awards were computed without the stat counters, so refresh it from the full profile.
     if(!publicSummarySynced && myProfile && myProfile.unameLower){ publicSummarySynced=true; setTimeout(syncPublicSummary, 1500); }
     if(!unameNudgeTried){ unameNudgeTried=true; setTimeout(maybePromptUsername, 6000); }   // gentle "pick a username" nudge once per session
+    if(!installNudgeTried){ installNudgeTried=true; setTimeout(maybePromptInstall, 11000); }   // gentle "install the app" nudge once per session (after the username one)
     if($('usermodal') && $('usermodal').classList.contains('show')) renderUserPanel();   // keep the User panel live
     if(feedScope==='mine') renderFeed();
     if(selectedLaunch) renderLaunchDetail(selectedLaunch);
@@ -8667,7 +8732,7 @@ function stopSocial(){
   if(unsubPings){ unsubPings(); unsubPings=null; }
   if(unsubFeedWatch){ unsubFeedWatch(); unsubFeedWatch=null; }
   Object.values(friendProfileUnsubs).forEach(u=>{ try{u();}catch(e){} }); friendProfileUnsubs={};
-  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear(); publicSummarySynced=false; unameNudgeTried=false;
+  friends=[]; myProfile=null; incomingReqs=[]; allUsers=[]; sentRequests=new Set(); pinnedFriends.clear(); publicSummarySynced=false; unameNudgeTried=false; installNudgeTried=false;
   unlockQueue=[]; unlockBusy=false;   // the celebrated-set is stored per account, not reset here
   stopFeedbackWatch(); stopMyFeedback(); stopLoginWatch(); stopChatWatch(); isAdminUser=false; adminExtra=new Set(); syncSettingsTabs();
   rebuildSeenSet();   // clears the seen set on sign-out
@@ -10864,6 +10929,7 @@ function initMsgCompose(){
 }
 initMsgCompose();
 initUsernameNudge();
+initInstallNudge();
 
 /* ---------- Share a globe snapshot ---------- */
 async function shareSnapshot(){
