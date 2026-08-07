@@ -3037,7 +3037,7 @@
 </script>
 
 <script>
-const BUILD = 'v237';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v238';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3552,8 +3552,9 @@ async function refreshStaleData(){
 
 /* ---------- Background: load the rest of Starlink (cache-first, then network) ---------- */
 let starlinkFull=false, starlinkLoading=false;
-// Desktop pulls (nearly) the whole constellation; mobile is capped so phones stay smooth.
-const STARLINK_MAX = IS_MOBILE ? 2500 : 8000;   // GPU points lift the old mobile ceiling
+// Full active constellation on every device — GPU point rendering handles the count, so
+// phones get the whole thing too (headroom left for the constellation to keep growing).
+const STARLINK_MAX = 12000;
 const SL_CACHE_KEY='satmap_sl_v1', SL_TTL=12*3600*1000, SL_CACHE_MAX=3500;
 
 // Add compact [id,name,l1,l2] rows to the live set (deduped) + the worker.
@@ -3575,7 +3576,10 @@ async function loadMoreStarlink(){
   // 1) Serve the cached constellation if it's fresh — consistent, and no re-hammering Celestrak.
   try{ const c=JSON.parse(localStorage.getItem(SL_CACHE_KEY)||'null');
     if(c && Array.isArray(c.rows) && c.rows.length && Date.now()-c.ts < SL_TTL){
-      addStarlinkRows(c.rows); starlinkFull=true; return; } }catch(e){}
+      addStarlinkRows(c.rows);
+      if(SATS.filter(s=>s.group==='starlink').length >= STARLINK_MAX){ starlinkFull=true; return; }
+      // Cache only held a subset (localStorage quota trims it) — fall through and fetch the rest.
+    } }catch(e){}
   // 2) Otherwise download it (streamed, capped), with one gentle retry on failure.
   starlinkLoading=true;
   let ok=await downloadStarlink();
