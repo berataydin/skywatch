@@ -1453,6 +1453,23 @@
   #adm-ulist{display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:52vh;overflow-y:auto}
   .adm-urow{width:100%;text-align:left;background:transparent;font:inherit;color:inherit;cursor:pointer}
   .adm-urow:hover{background:rgba(120,160,255,.1)}
+  /* Admin user detail — identity header card */
+  .adm-uhead{display:flex;align-items:center;gap:12px;padding:12px 13px;margin-bottom:9px;border-radius:13px;
+    border:1px solid rgba(var(--neon-c),.35);background:rgba(var(--neon-c),.07)}
+  .adm-uhead .adm-uav{width:52px;height:52px;border-radius:50%;flex:0 0 auto;overflow:hidden;
+    display:flex;align-items:center;justify-content:center;font-size:24px;background:rgba(120,160,255,.15);
+    border:1px solid var(--border)}
+  .adm-uhead .adm-uav img{width:100%;height:100%;object-fit:cover}
+  .adm-uhead .adm-ubody{min-width:0;flex:1}
+  .adm-uhead .adm-unm{font-size:18px;font-weight:800;color:var(--text);line-height:1.15;word-break:break-word}
+  .adm-uhead .adm-usub{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-word}
+  .adm-uhead .adm-uid{font-size:10.5px;color:var(--muted);font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    margin-top:4px;cursor:pointer;word-break:break-all}
+  .adm-uhead .adm-ubadge{display:inline-block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
+    padding:2px 7px;border-radius:20px;margin:5px 5px 0 0}
+  .adm-ubadge.admin{color:#ffd34d;background:rgba(255,211,77,.14);border:1px solid rgba(255,211,77,.4)}
+  .adm-ubadge.blocked{color:var(--iss);background:rgba(255,90,77,.12);border:1px solid rgba(255,90,77,.4)}
+  .adm-ubadge.online{color:#57e08a;background:rgba(87,224,138,.12);border:1px solid rgba(87,224,138,.4)}
   /* Origin story */
   .origin-story p{margin:0 0 13px;font-size:14px;line-height:1.62;color:var(--text)}
   .origin-story p em{color:var(--accent);font-style:italic}
@@ -3059,7 +3076,7 @@
 </script>
 
 <script>
-const BUILD = 'v240';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v241';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7695,39 +7712,95 @@ async function admOpenUser(uid){
     const pr=await getDoc(doc(db,'profiles',uid));
     const prof=pr.exists()?pr.data():{};
     const uname=prof.username||'';
-    let reg={};
+    let reg={}, settings={}, presence={};
     if(uname){ try{ const u=await getDoc(doc(db,'usernames',uname.toLowerCase())); if(u.exists()) reg=u.data(); }catch(e){} }
-    admLookup={ uid, uname: uname || prof.displayName || 'unnamed', reg, profile:prof, noUsername:!uname };
+    // Admins can read users/{uid} (settings + push subscription) and presence/{uid} — pull them for a fuller picture.
+    try{ const us=await getDoc(doc(db,'users',uid)); if(us.exists()) settings=us.data(); }catch(e){}
+    try{ const ps=await getDoc(doc(db,'presence',uid)); if(ps.exists()) presence=ps.data(); }catch(e){}
+    admLookup={ uid, uname: uname || prof.displayName || 'unnamed', reg, profile:prof, settings, presence,
+      isAdmin: ADMIN_BOOTSTRAP.includes(uid) || adminExtra.has(uid), noUsername:!uname };
     admShowUser();
     box.scrollIntoView({behavior:'smooth', block:'nearest'});
   }catch(e){ if(box) box.innerHTML='<div class="fr-note">Couldn’t open: '+esc(e.code||e.message||e)+'</div>'; }
 }
 function admShowUser(){
   const box=$('adm-user'); if(!box || !admLookup) return;
-  const p=admLookup.profile||{}, st=statsFromProfile(p), earned=achEarned(st);
+  const p=admLookup.profile||{}, st=statsFromProfile(p), earned=achEarned(st), score=scoreOf(st,earned);
   const earnedSet=new Set(earned.map(a=>a.id));
-  const reg=admLookup.reg||{};
-  box.innerHTML=
+  const reg=admLookup.reg||{}, s=admLookup.settings||{}, pres=admLookup.presence||{};
+  const photo=p.photoURL||pres.photoURL||'';
+  const display=p.displayName||pres.name||'';
+  const lastSeen=Math.max(p.lastSeen||0, pres.ts||0);
+  const online=lastSeen && (Date.now()-lastSeen < 120000);
+  // Push state: `users/{uid}.push` holds the live subscription object; `pushOn` is the boolean toggle.
+  const hasSub=!!(s.push && s.push.endpoint);
+  const pushToggle=(s.pushOn===true)||(!('pushOn' in s) && s.push===true);   // legacy: boolean once lived in `push`
+  const yn=(v,onWord,offWord)=>'<span class="dev-v '+(v?'ok':'')+'">'+(v?(onWord||'yes'):(offWord||'no'))+'</span>';
+  const row=(k,v)=>'<div class="dev-row"><span class="dev-k">'+k+'</span>'+v+'</div>';
+  const val=(v,cls)=>'<span class="dev-v'+(cls?(' '+cls):'')+'">'+v+'</span>';
+  const memberSince = reg.created||p.created||p.since||0;
+
+  // ---- 1) Identity header card — first, prominent ----
+  const badges=(admLookup.isAdmin?'<span class="adm-ubadge admin">Admin</span>':'')+
+    (reg.blocked?'<span class="adm-ubadge blocked">Blocked</span>':'')+
+    (online?'<span class="adm-ubadge online">Online</span>':'');
+  const head=
+    '<div class="adm-uhead">'+
+      '<div class="adm-uav">'+(photo?('<img src="'+esc(photo)+'" referrerpolicy="no-referrer">'):'👤')+'</div>'+
+      '<div class="adm-ubody">'+
+        '<div class="adm-unm">'+(admLookup.noUsername?esc(display||'Unnamed stargazer'):('@'+esc(admLookup.uname)))+'</div>'+
+        '<div class="adm-usub">'+(admLookup.noUsername?'<span class="dev-v warn" style="font-family:inherit">no username set</span>':(display?esc(display):'—'))+
+          ' · '+score.toLocaleString()+' pts</div>'+
+        '<div class="adm-uid" id="adm-copyuid" title="Tap to copy">'+esc(admLookup.uid)+'</div>'+
+        (badges?('<div>'+badges+'</div>'):'')+
+      '</div>'+
+    '</div>';
+
+  // ---- 2) Information ----
+  const info=
+    admSec('Activity')+
     '<div class="adm-card">'+
-      '<div class="adm-top"><b>'+(admLookup.noUsername?'':'@')+esc(admLookup.uname)+'</b><span class="adm-st">'+esc(admLookup.uid.slice(0,10))+'…</span></div>'+
-      (admLookup.noUsername?'<div class="dev-row"><span class="dev-k">Username</span><span class="dev-v warn">not set yet</span></div>':'')+
-      '<div class="dev-row"><span class="dev-k">Objects / sightings</span><span class="dev-v">'+st.badges+' / '+st.sightings+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Awards</span><span class="dev-v">'+earned.length+' of '+ACH.length+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Best streak</span><span class="dev-v">'+st.maxStreak+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Friends</span><span class="dev-v">'+(p.friendCount||0)+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Last seen</span><span class="dev-v">'+(p.lastSeen?fmtSeen(p.lastSeen):'—')+'</span></div>'+
-      '<div class="dev-row"><span class="dev-k">Blocked</span><span class="dev-v '+(reg.blocked?'bad':'ok')+'">'+
-        (reg.blocked?'yes':'no')+'</span></div>'+
+      row('Score', val(score.toLocaleString()))+
+      row('Objects / sightings', val(st.badges+' / '+st.sightings))+
+      row('Awards', val(earned.length+' of '+ACH.length))+
+      row('Best / current streak', val(st.maxStreak+' / '+(st.streak||0)))+
+      row('Friends', val(p.friendCount||0))+
+      row('Member since', val(memberSince?fmtSeen(memberSince):'—'))+
+      row('Last active', val(lastSeen?fmtSeen(lastSeen):'—'))+
     '</div>'+
+    admSec('Notifications & privacy')+
+    '<div class="adm-card">'+
+      row('Push subscription', hasSub?val('active','ok'):val('none'))+
+      row('Push toggle', yn(pushToggle,'on','off'))+
+      row('Background alerts', yn(s.notify!==false,'on','off'))+
+      row('Train alerts', yn(s.notifyTrain!==false,'on','off'))+
+      row('Queued alerts', val(Array.isArray(s.alertSchedule)?s.alertSchedule.length:0))+
+      row('Next alert', val(s.nextAlert?fmtSeen(s.nextAlert):'—'))+
+      row('Listed in Community', yn(reg.listed!==false&&s.listed!==false,'yes','hidden'))+
+      row('On leaderboard', yn(reg.ranked!==false&&s.ranked!==false,'yes','no'))+
+      row('Shares location', yn(s.shareLoc!==false,'yes','no'))+
+      row('Theme', val(esc(s.theme||'default')))+
+      row('Blocked', reg.blocked?val('yes','bad'):val('no','ok'))+
+    '</div>';
+
+  // ---- 3) Options ----
+  const opts=
     admSec('Awards')+
     '<div class="usr-row"><select id="adm-award">'+
       ACH.map(a=>'<option value="'+a.id+'">'+(earnedSet.has(a.id)?'✓ ':'')+a.n+'</option>').join('')+
     '</select><button id="adm-grant">Grant</button></div>'+
     '<div class="adm-acts">'+
       admBtn('u-revoke','Revoke selected')+
+      admBtn('u-recompute','Recompute score')+
       admBtn('u-resetcel','Reset unlock history')+
-      admBtn('u-clearset','Clear synced settings')+
+    '</div>'+
+    admSec('Account')+
+    '<div class="adm-acts">'+
+      admBtn('u-listtoggle', (reg.listed===false||s.listed===false)?'Show in Community':'Hide from Community')+
+      admBtn('u-ranktoggle', (reg.ranked===false||s.ranked===false)?'Add to leaderboard':'Remove from leaderboard')+
       admBtn('u-pushtest','Send test push')+
+      admBtn('u-pushoff','Force push off')+
+      admBtn('u-clearset','Clear synced settings')+
     '</div>'+
     admSec('Moderation')+
     '<div class="adm-acts">'+
@@ -7735,7 +7808,10 @@ function admShowUser(){
       admBtn('u-snapshot','Snapshot sightings')+
       admBtn('u-restore','Restore last snapshot','danger')+
     '</div>';
+
+  box.innerHTML=head+info+opts;
   const g=$('adm-grant'); if(g) g.onclick=()=>admAction('u-grant');
+  const cu=$('adm-copyuid'); if(cu) cu.onclick=()=>{ try{ navigator.clipboard.writeText(admLookup.uid); showToast('UID copied', true); }catch(e){} };
   admWire(box);
 }
 /* Every destructive change snapshots first, so "restore" always has something. */
@@ -8124,6 +8200,36 @@ async function admAction(a){
         title:'SkyWatch test', body:'If you can read this, background alerts work.'});
       adminLog('push-test', uid);
       showToast('Queued — the Cloud Function sends it within a minute', true); return;
+    }
+    if(cmd==='u-recompute'){
+      const prof=admLookup.profile||{}, st=statsFromProfile(prof), earned=achEarned(st);
+      const pub={ badges:st.badges, sightings:st.sightings, streak:st.maxStreak, ach:earned.map(a=>a.id), score:scoreOf(st,earned) };
+      await setDoc(doc(db,'profiles',uid), pub, {merge:true});
+      const lower=(prof.username||'').toLowerCase();
+      if(lower) await setDoc(doc(db,'usernames',lower), pub, {merge:true});
+      adminLog('recompute', uid); showToast('✓ Score recomputed ('+pub.score+' pts)', true);
+      admShowUser(); return;
+    }
+    if(cmd==='u-pushoff'){
+      if(!confirm('Force background alerts off for @'+uname+'? Clears their push subscription — they can re-enable it themselves.')) return;
+      await setDoc(doc(db,'users',uid), {push:null, pushOn:false, nextAlert:null}, {merge:true});
+      admLookup.settings=Object.assign({}, admLookup.settings, {push:null, pushOn:false, nextAlert:null});
+      adminLog('push-off', uid); showToast('Push subscription cleared', true);
+      admShowUser(); return;
+    }
+    if(cmd==='u-listtoggle' || cmd==='u-ranktoggle'){
+      const key = cmd==='u-listtoggle' ? 'listed' : 'ranked';
+      const reg=admLookup.reg||{}, s=admLookup.settings||{};
+      const currentlyOn = reg[key]!==false && s[key]!==false;
+      const next=!currentlyOn;
+      const prof=admLookup.profile||{}, lower=(prof.username||'').toLowerCase();
+      if(lower) await setDoc(doc(db,'usernames',lower), {[key]:next}, {merge:true});
+      await setDoc(doc(db,'users',uid), {[key]:next}, {merge:true});
+      admLookup.reg=Object.assign({}, reg, {[key]:next});
+      admLookup.settings=Object.assign({}, s, {[key]:next});
+      adminLog(cmd, uid, key+'='+next);
+      showToast((key==='listed'?'Community listing ':'Leaderboard ')+(next?'on':'off'), true);
+      admShowUser(); return;
     }
     if(cmd==='u-block'){
       const next=!admLookup.reg.blocked;
