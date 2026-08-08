@@ -3099,7 +3099,7 @@
 </script>
 
 <script>
-const BUILD = 'v245';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v246';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4140,7 +4140,7 @@ function renderPoints(){
       : (enabled['unknown'] && objType(s)==='UNK') ? (UNK_RGB || (UNK_RGB=hexRgb('#c3ccdb')))
       : (s._rgb || (s._rgb=hexRgb(s.color)));
     col[k*3]=rgb[0]; col[k*3+1]=rgb[1]; col[k*3+2]=rgb[2];
-    sz[k] = isSel ? 11 : inTrain ? 7 : (s.id==='25544') ? 9 : up ? 6 : (favs.size && favs.has(s.id) ? 5.5 : 3.2);
+    sz[k] = isSel ? 8 : inTrain ? 5 : (s.id==='25544') ? 6.5 : up ? 4.4 : (favs.size && favs.has(s.id) ? 4 : 2.2);
     pointSatIndex[k]=i; k++;
   }
   satGeo.setDrawRange(0,k);
@@ -4270,7 +4270,8 @@ function initSatPoints(){
       fragmentShader:
         'varying vec3 vColor; varying float vSize;'+
         'void main(){ vec2 d=gl_PointCoord-vec2(0.5); float r=length(d);'+
-        'float aa=clamp(1.0/max(vSize,1.0), 0.03, 0.28);'+
+        // Hairline edge: ~0.8px of feather whatever the size, tightly clamped so small dots stay crisp.
+        'float aa=clamp(0.8/max(vSize,1.0), 0.02, 0.16);'+
         'float a=1.0-smoothstep(0.5-aa, 0.5, r);'+
         'if(a<=0.0) discard;'+
         'gl_FragColor=vec4(vColor,a); }'
