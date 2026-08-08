@@ -3159,7 +3159,7 @@
 </script>
 
 <script>
-const BUILD = 'v252';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v253';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3380,7 +3380,7 @@ const Haptics = (function(){
   }
   return {
     tap()      { fire(8); },                                    // generic control
-    loadtick() { fire(5, 90); },                                // faint "tick" as the constellation streams in
+    loadtick() { fire(15, 80); },                               // "tick" as the constellation streams in (needs a prior tap on Android)
     nav()      { fire(14); },                                   // panel / nav change
     toggle(on) { fire(on ? [12,40,22] : 12); },                 // on feels like it "latches"
     select()   { fire([10,30,10]); },                           // picking an object
@@ -3400,6 +3400,24 @@ const Haptics = (function(){
     force(p)   { if(HAPTIC_OK){ try{ navigator.vibrate(p); }catch(e){} } }
   };
 })();
+/* The constellation streams in on load — but Android blocks vibration until the page has had a
+   real tap (user activation), and the auto-load happens before any tap, so the per-batch ticks are
+   suppressed. On the FIRST interaction after opening, replay a "sky populating" tick sequence so
+   the effect is actually felt. (No effect on iOS/desktop — those browsers have no Vibration API.) */
+let popHapticDone=false; const appOpenedAt=Date.now();
+function primePopulateHaptic(){
+  const fire=()=>{
+    document.removeEventListener('pointerdown', fire, true);
+    document.removeEventListener('keydown', fire, true);
+    if(popHapticDone) return; popHapticDone=true;
+    if(!HAPTIC_OK || prefs.vibrate===false) return;
+    if(Date.now()-appOpenedAt > 30000) return;         // only in the "just opened" window
+    // Rhythmic ticking that settles into a buzz — the sky filling in.
+    try{ navigator.vibrate([12,90,12,90,12,90,12,90,12,90,12,90,12,80,30,70,120]); }catch(e){}
+  };
+  document.addEventListener('pointerdown', fire, true);
+  document.addEventListener('keydown', fire, true);
+}
 
 /* ---------- Ambient "celestial" music (Web Audio, synthesized live) ---------- */
 const Music = (function(){
@@ -7913,6 +7931,7 @@ async function renderDev(){
       syncAge==null?'warn':syncAge<180?'ok':'warn')+
     devRow('Caches', swCache)+
     devRow('Standalone', isStandalone()?'yes':'no')+
+    devRow('Vibration', HAPTIC_OK?(prefs.vibrate===false?'supported · off in settings':'supported'):'unsupported (iOS/desktop have no web API)', HAPTIC_OK?(prefs.vibrate===false?'warn':'ok'):'warn')+
     devRow('Your UID', currentUser?currentUser.uid:'not signed in', currentUser?'ok':'warn')+
     devRow('Admin', isAdminUser?'yes':'no', isAdminUser?'ok':'')+
     devRow('User agent', navigator.userAgent.slice(0,60)+'…')+
@@ -12339,7 +12358,7 @@ function startCommunityStats(){
   }
 }
 
-initMobileUI(); initInstall(); registerSW(); initAccountUI(); initSettingsUI(); initFriendsUI(); initAR(); initOnboard(); initLightbox(); initAchievements(); initListModal(); initClickSounds(); initSky(); initUapForm(); initCe5(); initUserPanel(); initLocPicker(); initVisibilityPause(); initTip(); initAchReplay(); initCompass(); initDevMode(); initFeedback();
+initMobileUI(); initInstall(); registerSW(); initAccountUI(); initSettingsUI(); initFriendsUI(); initAR(); initOnboard(); initLightbox(); initAchievements(); initListModal(); initClickSounds(); initSky(); initUapForm(); initCe5(); initUserPanel(); initLocPicker(); initVisibilityPause(); initTip(); initAchReplay(); initCompass(); initDevMode(); initFeedback(); primePopulateHaptic();
 </script>
 
 <!-- Module loader: import the 3D libs, expose them as globals, then boot -->
