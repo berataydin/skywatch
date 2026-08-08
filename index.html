@@ -3140,7 +3140,7 @@
 </script>
 
 <script>
-const BUILD = 'v248';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v249';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -6477,6 +6477,14 @@ function initOnboard(){
 let arActive=false, arTarget=null, arHeading=null, arPitch=null, arOrient=null, arRAF=null;
 let arHeadS=null, arPitchS=null, arAz=null, arEl=null, arLastCalc=0, arOnTarget=false;
 let arSky=[], arSkyCalc=0, arStream=null, arDpr=1;
+let arCenterId=null, arCenterAt=0;                  // object currently in the reticle (drives the "point at it" haptic)
+const AR_SKY_CAP=130;                               // extra overhead sats drawn beyond the bright/curated set
+// Cheap topocentric look angle from a satellite's already-cached geodetic position (no re-propagation).
+function azElFromGeo(latDeg, lonDeg, altKm){
+  const ecf=satellite.geodeticToEcf({latitude:latDeg*D2R, longitude:lonDeg*D2R, height:altKm});
+  const la=satellite.ecfToLookAngles(observer.gd, ecf);
+  return { az:la.azimuth*R2D, el:la.elevation*R2D };
+}
 function openAR(){ if(!selected){ return; } startAR(selected); }   // from a satellite's detail card
 function openArSky(){ startAR(null); }                            // "point & identify" — whole sky
 function startAR(target){
@@ -6526,42 +6534,111 @@ function arCandidates(){
   if(arTarget) add(arTarget);
   return set;
 }
-// Recompute each candidate's azimuth/elevation (throttled ~4×/s — they drift slowly on screen).
+// Recompute the sky (throttled ~4×/s). Three layers: the bright/curated set (propagated fresh for
+// accuracy + always labelled), the rest of what's currently overhead (cheap — from cached positions,
+// capped, so the sky feels full), and the Sun + Moon as labelled bodies.
 function arComputeSky(){
   if(!observer){ arSky=[]; return; }
-  const d=new Date(simNow()), g=satellite.gstime(d), out=[];
+  const d=new Date(simNow()), g=satellite.gstime(d), out=[], seen=new Set();
+  // 1) Bright / curated set + the tracked target.
   for(const s of arCandidates()){
     let pv; try{ pv=satellite.propagate(s.satrec, d); }catch(e){ continue; }
     if(!pv || !pv.position) continue;
     let la; try{ la=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(pv.position, g)); }catch(e){ continue; }
     const el=la.elevation*R2D; if(el < -2) continue;                 // keep just-below-horizon for smooth entry
-    out.push({ id:s.id, name:shortName(s.name), az:la.azimuth*R2D, el, group:s.group, target:!!(arTarget && s.id===arTarget.id) });
+    seen.add(s.id);
+    out.push({ id:s.id, name:shortName(s.name), az:la.azimuth*R2D, el, group:s.group,
+      bright:true, target:!!(arTarget && s.id===arTarget.id) });
   }
+  // 2) Fill the sky with everything else overhead from the enabled layers (highest first, capped).
+  const extra=[];
+  for(const s of SATS){
+    if(seen.has(s.id) || !enabled[s.group]) continue;
+    if(s.elevation==null || s.elevation<8 || s.lat==null) continue;  // only what's genuinely up
+    extra.push(s);
+  }
+  extra.sort((a,b)=>b.elevation-a.elevation);
+  for(let i=0, cap=Math.min(extra.length, AR_SKY_CAP); i<cap; i++){
+    const s=extra[i]; let ae; try{ ae=azElFromGeo(s.lat, s.lng, s.altKm); }catch(e){ continue; }
+    if(ae.el<0) continue;
+    out.push({ id:s.id, name:shortName(s.name), az:ae.az, el:ae.el, group:s.group });
+  }
+  // 3) Moon + Sun — the anchors people frame their screenshots around.
+  try{ const mla=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(moonEci(simNow()), g));
+    out.push({ id:'__moon', name:'Moon', az:mla.azimuth*R2D, el:mla.elevation*R2D, body:'moon' }); }catch(e){}
+  try{ const sla=satellite.ecfToLookAngles(observer.gd, satellite.eciToEcf(sunEci(simNow()), g));
+    out.push({ id:'__sun', name:'Sun', az:sla.azimuth*R2D, el:sla.elevation*R2D, body:'sun' }); }catch(e){}
   arSky=out;
 }
-// Paint every above-horizon candidate as a labelled dot, positioned by where the phone points.
+const AR_FOV=42;                                                    // ~84° across ≈ a phone camera
+function hexA(hex, a){ const h=String(hex||'#8ecbff').replace('#','');
+  const s=h.length===3?h.replace(/(.)/g,'$1$1'):h, n=parseInt(s,16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+function arLabel(ctx, text, x, y, color, bold){
+  ctx.font=(bold?'700 ':'600 ')+'13px system-ui,-apple-system,sans-serif';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillText(text, x+0.7, y+0.7);   // drop shadow for legibility over the camera feed
+  ctx.fillStyle=color; ctx.fillText(text, x, y);
+}
+// Paint the held-up sky: horizon + cardinals, every above-horizon object positioned by where the
+// phone points, the Sun & Moon, and a centre reticle. Labels are selective so it stays screenshot-clean.
 function arDrawSky(){
   const cv=$('ar-canvas'); if(!cv || !cv._ctx) return;
   const ctx=cv._ctx, W=cv._W, H=cv._H;
   ctx.clearRect(0,0,W,H);
   if(arHeadS==null || arPitchS==null) return;
-  const hw=W/2, hh=H/2, FOV=42;                                     // ~84° across ≈ a phone camera
-  for(const o of arSky){
-    if(o.el < 0) continue;
-    const dAz=((o.az-arHeadS+540)%360)-180;
-    const dEl=o.el-arPitchS;
-    if(Math.abs(dAz)>FOV+12 || Math.abs(dEl)>FOV+12) continue;       // outside the view
-    const x=hw + dAz/FOV*hw, y=hh - dEl/FOV*hh;
-    const iss=o.group==='iss', t=o.target;
-    const col = t?'#57e08a' : iss?'#ff6a5d' : 'rgba(130,205,255,.95)';
-    ctx.beginPath(); ctx.arc(x, y, t?7:(iss?5.5:4), 0, 6.2832);
-    ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=t?16:9; ctx.fill(); ctx.shadowBlur=0;
-    ctx.font=(t||iss?'700 ':'600 ')+'13px system-ui,-apple-system,sans-serif';
-    ctx.textAlign='left'; ctx.textBaseline='middle';
-    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillText(o.name, x+(t?12:9)+0.7, y+0.7);   // drop shadow for legibility
-    ctx.fillStyle = t?'#9cffc0' : iss?'#ffb3ab' : 'rgba(232,242,255,.96)';
-    ctx.fillText(o.name, x+(t?12:9), y);
+  const hw=W/2, hh=H/2;
+  // --- horizon line + cardinal ticks ---
+  const horizonY = hh + arPitchS/AR_FOV*hh;                         // where elevation 0° lands on screen
+  if(horizonY>-60 && horizonY<H+60){
+    ctx.strokeStyle='rgba(150,190,255,.26)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,horizonY); ctx.lineTo(W,horizonY); ctx.stroke();
   }
+  const cardY=Math.max(10, Math.min(H-34, horizonY));
+  for(const [az,lab] of [[0,'N'],[45,'NE'],[90,'E'],[135,'SE'],[180,'S'],[225,'SW'],[270,'W'],[315,'NW']]){
+    const dAz=((az-arHeadS+540)%360)-180; if(Math.abs(dAz)>AR_FOV+6) continue;
+    const x=hw+dAz/AR_FOV*hw, one=lab.length===1;
+    ctx.strokeStyle='rgba(150,190,255,.4)'; ctx.lineWidth=one?2:1;
+    ctx.beginPath(); ctx.moveTo(x,cardY-7); ctx.lineTo(x,cardY+7); ctx.stroke();
+    ctx.font=(one?'800 14':'600 11')+'px system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillText(lab, x+0.6, cardY+9.6);
+    ctx.fillStyle=(lab==='N'?'#ff8a7a':'rgba(190,215,255,.9)'); ctx.fillText(lab, x, cardY+9);
+  }
+  // --- collect what's on screen, so we can label the nearest-to-centre even if it's a plain dot ---
+  const drawn=[];
+  for(const o of arSky){
+    if(o.el<0 && !o.body) continue;
+    const dAz=((o.az-arHeadS+540)%360)-180, dEl=o.el-arPitchS;
+    if(Math.abs(dAz)>AR_FOV+12 || Math.abs(dEl)>AR_FOV+12) continue;
+    drawn.push({ o, x:hw+dAz/AR_FOV*hw, y:hh-dEl/AR_FOV*hh, dist:Math.hypot(dAz,dEl) });
+  }
+  let nearest=null; for(const dd of drawn){ if(dd.o.body) continue; if(!nearest||dd.dist<nearest.dist) nearest=dd; }
+  for(const dd of drawn){
+    const {o,x,y}=dd;
+    if(o.body){
+      const moon=o.body==='moon';
+      ctx.beginPath(); ctx.arc(x,y, moon?11:12, 0, 6.2832);
+      ctx.fillStyle= moon?'rgba(232,234,242,.96)':'rgba(255,214,120,.96)';
+      ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=moon?14:22; ctx.fill(); ctx.shadowBlur=0;
+      arLabel(ctx,(moon?'🌙 ':'☀️ ')+o.name, x+15, y, moon?'#e8eefc':'#ffd88a', true);
+      continue;
+    }
+    const iss=o.group==='iss', t=o.target, brightSet=o.bright;
+    const gcol=(GROUPS.find(g=>g.id===o.group)||{}).color || '#8ecbff';
+    const col = t?'#57e08a' : iss?'#ff6a5d' : brightSet?'rgba(184,226,255,.98)' : hexA(gcol,.9);
+    const r = t?7:iss?6:brightSet?4.5:3;
+    ctx.beginPath(); ctx.arc(x,y,r,0,6.2832);
+    ctx.fillStyle=col; ctx.shadowColor=col; ctx.shadowBlur=t?16:iss?12:brightSet?8:5; ctx.fill(); ctx.shadowBlur=0;
+    if(t||iss||brightSet || (nearest && nearest.o.id===o.id))
+      arLabel(ctx, o.name, x+(t?12:9), y, t?'#9cffc0':iss?'#ffb3ab':'rgba(232,242,255,.96)', t||iss);
+  }
+  // --- centre reticle ---
+  ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(hw,hh,16,0,6.2832); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(hw-24,hh); ctx.lineTo(hw-20,hh); ctx.moveTo(hw+20,hh); ctx.lineTo(hw+24,hh);
+  ctx.moveTo(hw,hh-24); ctx.lineTo(hw,hh-20); ctx.moveTo(hw,hh+20); ctx.lineTo(hw,hh+24);
+  ctx.stroke();
 }
 let arAbsSeen=false;   // true once a compass-referenced (absolute) heading has arrived
 function onOrient(e){
@@ -6608,13 +6685,13 @@ function arSetArrows(dAz, dEl){
 function arHitTest(px, py){
   if(arHeadS==null || arPitchS==null) return null;
   const cv=$('ar-canvas'), W=(cv&&cv._W)||innerWidth, H=(cv&&cv._H)||innerHeight;
-  const hw=W/2, hh=H/2, FOV=42;
+  const hw=W/2, hh=H/2;
   let bestId=null, bestD=46;                                  // px hit radius
   for(const o of arSky){
-    if(o.el<0) continue;
+    if(o.el<0 || o.body) continue;                            // bodies (Sun/Moon) aren't tracked satellites
     const dAz=((o.az-arHeadS+540)%360)-180, dEl=o.el-arPitchS;
-    if(Math.abs(dAz)>FOV+12 || Math.abs(dEl)>FOV+12) continue;
-    const x=hw+dAz/FOV*hw, y=hh-dEl/FOV*hh, d=Math.hypot(px-x, py-y);
+    if(Math.abs(dAz)>AR_FOV+12 || Math.abs(dEl)>AR_FOV+12) continue;
+    const x=hw+dAz/AR_FOV*hw, y=hh-dEl/AR_FOV*hh, d=Math.hypot(px-x, py-y);
     if(d<bestD){ bestD=d; bestId=o.id; }
   }
   return bestId;
@@ -6707,7 +6784,8 @@ function arTick(){
       const x=Math.max(-hw+34,Math.min(hw-34, dAz/45*hw)), y=Math.max(-hh+34,Math.min(hh-34, -dEl/45*hh));
       tgt.style.opacity=1; tgt.style.transform='translate(-50%,-50%) translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px)';
       const dist=Math.hypot(dAz,dEl);                        // hysteresis: lock <7°, release >11°
-      if(dist<7) arOnTarget=true; else if(dist>11) arOnTarget=false;
+      if(dist<7){ if(!arOnTarget) Haptics.ping(); arOnTarget=true; }   // buzz the moment you land on it
+      else if(dist>11) arOnTarget=false;
       tgt.classList.toggle('near', arOnTarget);
       arSetArrows(dAz, dEl);                                 // big edge arrows point the way to turn
       const hor=Math.abs(dAz)<8?'':(dAz>0?'right':'left'), ver=Math.abs(dEl)<8?'':(dEl>0?'up':'down');
@@ -6716,13 +6794,39 @@ function arTick(){
       sub.textContent='Az '+Math.round((az+360)%360)+'° '+azCompass(az)+' · Alt '+Math.round(el)+'° · '+Math.round(dist)+'° away';
     }
   } else {
-    // Overlay mode: no single target — just show what's up and where you're facing.
+    // Overlay mode: no single target — show what's up, and give a "metal-detector" haptic tick
+    // whenever a new object slides into the centre reticle.
     tgt.style.opacity=0; arHideArrows();
-    const up=arSky.reduce((n,o)=>n+(o.el>=0?1:0),0);
-    if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; }
-    else { guide.textContent=up+' overhead'; sub.textContent='Facing '+azCompass(arHeadS)+' '+Math.round(arHeadS)+'° · tap a dot to open it'; }
+    const up=arSky.reduce((n,o)=>n+((o.el>=0&&!o.body)?1:0),0);
+    if(arHeadS==null){ guide.textContent='Move your phone'; sub.textContent='Waiting for the compass…'; arCenterId=null; }
+    else {
+      const c=arCenterObject();
+      if(c){
+        if(c.id!==arCenterId && now-arCenterAt>150){        // just entered the reticle
+          arCenterId=c.id; arCenterAt=now;
+          (c.body || c.group==='iss' || c.bright) ? Haptics.select() : Haptics.tap();
+        }
+        guide.textContent='🎯 '+c.name;
+        sub.textContent='Alt '+Math.round(c.el)+'° · '+azCompass(c.az)+(c.body?'':' · tap to open');
+      } else {
+        arCenterId=null;
+        guide.textContent=up+' overhead';
+        sub.textContent='Facing '+azCompass(arHeadS)+' '+Math.round(arHeadS)+'° · sweep to explore';
+      }
+    }
   }
   arRAF=requestAnimationFrame(arTick);
+}
+// The object sitting in the centre reticle (within a few degrees) — drives the point-at-it haptic.
+function arCenterObject(){
+  if(arHeadS==null || arPitchS==null) return null;
+  let best=null, bestD=5.0;                                   // degrees from centre
+  for(const o of arSky){
+    if(o.el<0 && !o.body) continue;
+    const dAz=((o.az-arHeadS+540)%360)-180, dEl=o.el-arPitchS, d=Math.hypot(dAz,dEl);
+    if(d<bestD){ bestD=d; best=o; }
+  }
+  return best;
 }
 // After a full-screen overlay closes on pointerup, the browser still fires a synthesized click
 // at those coordinates — which now lands on whatever is beneath (e.g. the account button in the
