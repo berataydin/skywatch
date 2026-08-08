@@ -806,6 +806,28 @@
     padding:4px 9px;border-radius:8px;background:rgba(120,160,255,.14);color:var(--muted)}
   .nt-grade.best{background:rgba(87,224,138,.18);color:#57e08a}
   .nt-grade.good{background:rgba(90,209,255,.18);color:var(--accent)}
+  /* "Worth it tonight?" fused score badge (brightness + darkness + moon + cloud) */
+  .nt-score{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    min-width:44px;padding:5px 7px;border-radius:10px;background:rgba(120,160,255,.12);border:1px solid var(--border)}
+  .nt-score b{font-size:15px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .nt-score small{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.9}
+  .nt-score.great{background:rgba(87,224,138,.16);border-color:rgba(87,224,138,.45);color:#57e08a}
+  .nt-score.good{background:rgba(90,209,255,.16);border-color:rgba(90,209,255,.45);color:var(--accent)}
+  .nt-score.fair{background:rgba(255,211,77,.14);border-color:rgba(255,211,77,.4);color:#ffd34d}
+  .nt-score.poor{background:rgba(255,122,107,.12);border-color:rgba(255,122,107,.35);color:#ff9a86}
+  .nt-verdict{display:flex;align-items:center;gap:11px;margin:2px 2px 10px;padding:12px 14px;border-radius:13px;
+    border:1px solid var(--border);background:rgba(120,160,255,.06)}
+  .nt-verdict .nt-vscore{flex:0 0 auto;width:52px;height:52px;border-radius:13px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;font-weight:800}
+  .nt-verdict .nt-vscore b{font-size:20px;line-height:1}
+  .nt-verdict .nt-vscore small{font-size:8px;text-transform:uppercase;letter-spacing:.5px;opacity:.85}
+  .nt-verdict .nt-vtx{min-width:0}
+  .nt-verdict .nt-vtx b{display:block;font-size:14.5px;color:var(--text)}
+  .nt-verdict .nt-vtx small{display:block;font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4}
+  .nt-verdict.great .nt-vscore{background:rgba(87,224,138,.18);color:#57e08a}
+  .nt-verdict.good .nt-vscore{background:rgba(90,209,255,.18);color:var(--accent)}
+  .nt-verdict.fair .nt-vscore{background:rgba(255,211,77,.16);color:#ffd34d}
+  .nt-verdict.poor .nt-vscore{background:rgba(255,122,107,.15);color:#ff9a86}
   /* Unlockable-award trophy — wiggles once every 3s to draw the eye */
   .nt-trophy{flex:0 0 auto;cursor:pointer;font-size:16px;line-height:1;margin:0 1px;padding:2px;
     filter:drop-shadow(0 0 4px rgba(255,205,70,.55));transform-origin:50% 65%;
@@ -3099,7 +3121,7 @@
 </script>
 
 <script>
-const BUILD = 'v246';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v247';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -10211,6 +10233,38 @@ let ntPicked=null;
 const NT_PICK_WINDOW=6*3600000;
 const NT_CAP=25;
 function ntGrade(el){ return el>=70 ? ['best','Superb'] : el>=45 ? ['good','Good'] : ['','Fair']; }
+/* "Worth it tonight?" — one 0–100 score per pass fusing four independent factors:
+   how bright/high the pass is, how dark the sky is, how much the Moon washes it out,
+   and (the big one) how cloudy it'll be at pass time. Cloud is a multiplier, so a perfect
+   pass under overcast scores near zero — which is the honest answer. */
+const ntClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function passScore(r){
+  const p=r.p, sat=r.sat;
+  // Intrinsic brightness of the object (ISS is unmistakable; the "visual" group is bright by definition).
+  const bright = (sat.id==='25544') ? 1.0
+    : (sat.group==='stations') ? 0.82
+    : (sat.group==='visual') ? 0.6 : 0.45;
+  const elev = ntClamp((p.peakEl-15)/70, 0, 1);              // 15°→0, 85°→1 (higher passes are brighter + easier)
+  let vis = 0.45*bright + 0.55*elev;
+  vis = Math.max(vis, elev*bright);                          // a dim, low pass never rates highly
+  // Darker sky = better contrast. Sun −6°→ok, −14°+→excellent.
+  const sun = sunElevAt(p.start);
+  const dark = (sun==null) ? 0.85 : ntClamp((-sun-6)/8, 0, 1);
+  // Moonlight washes out faint passes; bright/high ones shrug it off.
+  const mo = moonInfo(p.start);
+  const moonUp = (mo && mo.el!=null && mo.el>0) ? ntClamp(mo.el/35,0,1) : 0;
+  const moonPenalty = (moonUp * (mo?mo.illum:0)) * (1-vis) * 0.45;
+  const base = ntClamp(vis*(0.7+0.3*dark) - moonPenalty, 0, 1);
+  // Cloud cover at pass time — the veto factor. Unknown (forecast not loaded) → don't penalize.
+  const cloud = ntData && ntData.cloud ? cloudAt(ntData.cloud, p.start) : null;
+  const cloudMult = (cloud==null) ? null : ntClamp(1 - Math.pow(cloud/100, 1.3), 0.05, 1);
+  const score = Math.round((cloudMult==null ? base : base*cloudMult) * 100);
+  return { score, cloud, cloudKnown: cloud!=null };
+}
+function scoreVerdict(score){
+  return score>=72 ? ['great','Worth it'] : score>=50 ? ['good','Decent night']
+    : score>=30 ? ['fair','Marginal'] : ['poor','Skip tonight'];
+}
 /* Tonight → Achievements bridge. A small shaking trophy sits next to any object that could
    move you toward an award you HAVEN'T earned yet; tapping it jumps to that award's detail
    so you can see what's needed. Objects whose awards are all done get no trophy. */
@@ -10250,16 +10304,31 @@ function jumpToAchievement(achId){
 function renderNightList(){
   const out=$('night-out'); if(!out || !ntData) return;
   const {win, mo, launches}=ntData;
+  ntData.all.forEach(r=>{ r._sc=passScore(r); });           // fuse brightness + darkness + moon + cloud per pass
   // Awards you haven't earned yet drive the little trophies (signed-in only).
   const earnedSet = currentUser ? new Set(achEarned(statsFromProfile(myProfile||{})).map(a=>a.id)) : null;
-  const superbOnly = ntQuality==='best';
-  const list=(superbOnly ? ntData.all.filter(r=>r.p.peakEl>=70) : ntData.all).slice(0, NT_CAP);
+  const worthOnly = ntQuality==='best';
+  const list=(worthOnly ? ntData.all.filter(r=>r._sc.score>=60) : ntData.all).slice(0, NT_CAP);
   const dur=Math.round((win.end-win.start)/3600000);
   let h='<div class="nt-hero"><div class="nt-win">🌙 '+fmtPassTime(win.start)+' → '+
     new Date(win.end).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</div>'+
     '<div class="nt-sub">About '+dur+' hours of usable darkness. Moon '+Math.round(mo.illum*100)+'% lit'+
     (mo.el!=null && mo.el<0 ? ', below the horizon at dusk' : '')+
     (mo.illum>.6 && mo.el!=null && mo.el>10 ? ' — bright enough to wash out faint passes' : '')+'.</div></div>';
+  // "Worth it tonight?" headline verdict — the best pass's fused score, plus the why.
+  if(ntData.all.length){
+    const bestSc=ntData.all.reduce((m,r)=>Math.max(m,r._sc.score),0);
+    const v=scoreVerdict(bestSc);
+    const moonWash = mo.illum>.6 && mo.el!=null && mo.el>10;
+    let why = bestSc>=72 ? 'Clear, high passes on offer — get outside.'
+      : bestSc>=50 ? 'A few solid passes worth stepping out for.'
+      : bestSc>=30 ? (ntData.cloud ? 'Cloud or moonlight is holding things back — only the brightest earn it.'
+                                   : (moonWash ? 'Bright moon tonight — only the boldest passes cut through.' : 'Only low or faint passes tonight.'))
+      : (ntData.cloud ? 'Clouds are set to wash out tonight’s passes.' : 'Slim pickings — maybe another night.');
+    if(!ntData.cloud) why += ' (Cloud forecast loading…)';
+    h+='<div class="nt-verdict '+v[0]+'"><div class="nt-vscore"><b>'+bestSc+'</b><small>best</small></div>'+
+       '<div class="nt-vtx"><b>'+v[1]+' tonight</b><small>'+why+'</small></div></div>';
+  }
   // Overall cloud outlook for the passes we're about to list.
   if(ntData.cloud){
     const cv=list.map(r=>cloudAt(ntData.cloud, r.p.start)).filter(v=>v!=null);
@@ -10270,10 +10339,10 @@ function renderNightList(){
       h+='<div class="nt-cloudnote">'+note+'</div>';
     }
   }
-  const superbCount=ntData.all.filter(r=>r.p.peakEl>=70).length;
+  const worthCount=ntData.all.filter(r=>r._sc.score>=60).length;
   h+='<div class="idf-chips nt-filter" id="night-filter">'+
-      '<button data-q="all"'+(superbOnly?'':' class="on"')+'>All passes · '+ntData.all.length+'</button>'+
-      '<button data-q="best"'+(superbOnly?' class="on"':'')+'>⭐ Superb only · '+superbCount+'</button>'+
+      '<button data-q="all"'+(worthOnly?'':' class="on"')+'>All passes · '+ntData.all.length+'</button>'+
+      '<button data-q="best"'+(worthOnly?' class="on"':'')+'>⭐ Worth it · '+worthCount+'</button>'+
     '</div>';
   if(ntData.train){
     const tr=ntData.train;
@@ -10284,16 +10353,17 @@ function renderNightList(){
        '</span></button>';
   }
   if(!list.length){
-    h+='<div class="fr-note">'+(superbOnly
-      ? 'Nothing above 70° tonight. Switch to “All passes” — a 45° pass is still an easy naked-eye sighting.'
+    h+='<div class="fr-note">'+(worthOnly
+      ? 'Nothing scores “worth it” tonight — cloud, moon or low passes. Switch to “All passes”; a lower one can still be an easy sighting.'
       : 'No naked-eye passes above 20° tonight. That happens — the good ones cluster into a few days each month.')+'</div>';
     ntRows=[];
   } else {
     h+='<div class="idf-lbl">Tonight’s running order</div>';
     ntRows=list.map(r=>({id:r.sat.id, start:r.p.start, end:r.p.end}));
+    const shortLbl={great:'Go',good:'Good',fair:'Eh',poor:'Skip'};
     list.forEach(r=>{
       const mins=Math.max(1,Math.round((r.p.end-r.p.start)/60000));
-      const grade=ntGrade(r.p.peakEl);
+      const sc=r._sc, v=scoreVerdict(sc.score);
       const trophy = earnedSet ? trophyTag(achForSat(r.sat, earnedSet)) : '';
       const clHtml = ntData.cloud ? cloudTag(cloudAt(ntData.cloud, r.p.start)) : '';
       h+='<button class="nt-rank" data-id="'+esc(r.sat.id)+'" data-start="'+r.p.start+'" data-end="'+r.p.end+'">'+
@@ -10303,11 +10373,12 @@ function renderNightList(){
         azCompass(r.p.startAz)+'→'+azCompass(r.p.endAz)+' · '+mins+' min'+
         (clHtml?(' · '+clHtml):'')+'</span></span>'+
         trophy+
-        '<span class="nt-grade '+grade[0]+'">'+grade[1]+'</span></button>';
+        '<span class="nt-score '+v[0]+'" title="Worth-it score '+sc.score+'/100'+(sc.cloudKnown?'':' · cloud forecast pending')+'">'+
+          '<b>'+sc.score+'</b><small>'+shortLbl[v[0]]+'</small></span></button>';
     });
     h+='<button class="nt-invite" data-invite="1">🔗 Invite someone to tonight&rsquo;s best pass</button>';
-    if(!superbOnly && ntData.all.length>NT_CAP)
-      h+='<div class="fr-note">Showing the first '+NT_CAP+' of '+ntData.all.length+' — try “Superb only” to cut to the best.</div>';
+    if(!worthOnly && ntData.all.length>NT_CAP)
+      h+='<div class="fr-note">Showing the first '+NT_CAP+' of '+ntData.all.length+' — try “Worth it” to cut to the best.</div>';
   }
   if(launches.length){
     h+='<div class="idf-lbl">Launches during tonight’s window</div>';
