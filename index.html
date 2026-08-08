@@ -1200,6 +1200,21 @@
   /* launch detail card */
   .d-badge.b-launch{background:rgba(255,107,53,.18);color:#ff9a6b;border-color:rgba(255,107,53,.45)}
   .lc-count{font-size:22px;font-weight:700;color:#ff9a6b;font-variant-numeric:tabular-nums;margin:6px 0 12px;letter-spacing:.5px}
+  .lc-vis{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border-radius:11px;margin:0 0 8px;
+    border:1px solid var(--border);background:rgba(120,160,255,.06)}
+  .lc-vis-h{font-size:13px;color:var(--text)} .lc-vis-h b{font-weight:800}
+  .lc-vis-n{font-size:11.5px;color:var(--muted);line-height:1.4}
+  .lc-vis.great{border-color:rgba(87,224,138,.45);background:rgba(87,224,138,.08)} .lc-vis.great .lc-vis-h b{color:#57e08a}
+  .lc-vis.good{border-color:rgba(90,209,255,.45);background:rgba(90,209,255,.08)} .lc-vis.good .lc-vis-h b{color:var(--accent)}
+  .lc-vis.fair{border-color:rgba(255,211,77,.4);background:rgba(255,211,77,.07)} .lc-vis.fair .lc-vis-h b{color:#ffd34d}
+  .lc-vis.poor .lc-vis-h b{color:var(--muted)}
+  .lc-land{font-size:12.5px;font-weight:600;color:#c9b6ff;padding:7px 11px;border-radius:10px;margin:0 0 10px;
+    border:1px solid rgba(150,130,220,.4);background:rgba(150,130,220,.1)}
+  .lc-follow{width:100%;padding:10px;border-radius:11px;margin:0 0 10px;cursor:pointer;font:inherit;
+    font-size:13px;font-weight:700;color:#ff9a6b;background:rgba(255,107,53,.1);border:1px solid rgba(255,107,53,.4)}
+  .lc-follow:hover{background:rgba(255,107,53,.18)}
+  .lc-follow.on{color:#ffd8b0;background:rgba(255,107,53,.22);border-color:rgba(255,107,53,.7);
+    box-shadow:0 0 0 1px rgba(255,107,53,.5),0 0 18px rgba(255,107,53,.3)}
   .lc-seen{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
   .lc-seenbtn{flex:1 1 30%;min-width:104px;padding:9px 6px;border-radius:10px;border:1px solid var(--border);
     background:rgba(120,160,255,.06);color:var(--text);font-size:11.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
@@ -3144,7 +3159,7 @@
 </script>
 
 <script>
-const BUILD = 'v251';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v252';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3239,7 +3254,7 @@ const selMarker = {lat:null, lng:null, alt:0, _sel:true};   // pulsing highlight
 function simNow(){ return Date.now(); }
 // User preferences (synced to the signed-in account)
 const prefs = { units:'metric', time:'24', autorotate:true, issPath:true, cutoff:0, music:true,
-  notify:true, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, notifyTrain:true, notifyAurora:true, favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:true,   // alerts + background push default ON (browsers still require a one-time permission grant before a real push can deliver)
+  notify:true, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, notifyTrain:true, notifyAurora:true, followLaunch:[], favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:true,   // alerts + background push default ON (browsers still require a one-time permission grant before a real push can deliver)
   // Privacy — every one of these defaults to the least surprising option.
   shareFeed:true, shareLoc:true, locPrecise:true, listed:true, ranked:true,
   // Alerts
@@ -5164,6 +5179,8 @@ function buildAlertSchedule(cb){
     if(tr){ final.push(tr); final.sort((a,b)=>a.t-b.t); }
     const au = buildAuroraAlert(now, win);                 // aurora watch when a storm could reach this latitude
     if(au){ final.push(au); final.sort((a,b)=>a.t-b.t); }
+    const la = buildLaunchAlerts(now);                     // launch countdown milestones (+ booster landing)
+    if(la.length){ for(const e of la) final.push(e); final.sort((a,b)=>a.t-b.t); }
     if(muteActive()) final = final.filter(e=>e.t >= muteUntil);   // "not watching tonight" — drop everything until morning
     cb(final);
   })();
@@ -5251,6 +5268,33 @@ function fireAuroraNotification(au){
       opts:{ body:'A geomagnetic storm could bring aurora to your latitude tonight — find a dark '+dir+' horizon.',
         tag:'aurora-'+dayStr(Date.now()), icon:'icon-192.png', badge:'icon-192.png', renotify:false, data:{type:'aurora'} } }
   );
+}
+/* Launch countdown milestones for the PUSH schedule, so they reach a phone with the app closed:
+   T‑60, T‑10, liftoff, and a booster-landing burn (~T+7 min) when the rocket attempts recovery.
+   NB: iOS Live Activities / the Dynamic Island need a native app (ActivityKit) — a PWA can't post
+   there — so these milestone notifications are the web-feasible "countdown on your lock screen". */
+function buildLaunchAlerts(now){
+  if(!(prefs.notifyGroups && prefs.notifyGroups.rocket)) return [];
+  const end=now+PUSH_HORIZON, out=[];
+  const inWin=(LAUNCHES||[]).filter(l=>l.net && l.net.getTime()>now-15*60000 && l.net.getTime()<end).sort((a,b)=>a.net-b.net);
+  const set=new Map();
+  inWin.filter(l=>isFollowingLaunch(l.id)).forEach(l=>set.set(l.id,l));   // always schedule followed launches
+  inWin.slice(0,3).forEach(l=>set.set(l.id,l));                          // plus the next few overall
+  for(const l of set.values()){
+    const T=l.net.getTime();
+    const miles=[
+      [T-3600000, '🚀 '+l.rocket+' launches in an hour'],
+      [T-600000,  '🚀 '+l.rocket+' — 10 minutes to liftoff'],
+      [T,         '🚀 '+l.rocket+' is lifting off now']
+    ];
+    if(l.landing && l.landing.attempt) miles.push([T+7*60000, '🪂 '+l.rocket+' booster landing burn — about now']);
+    for(const m of miles){ const t=m[0];
+      if(t<=now+60000 || t>=end || inQuietHours(t)) continue;
+      out.push({ t, title:'🚀 '+l.provider+' · '+l.rocket, body:m[1]+(l.padName?(' · '+l.padName):''),
+        tag:'launch-'+l.id+'-'+Math.round(t/60000), data:{type:'launch', id:l.id} });
+    }
+  }
+  return out;
 }
 // One "tonight's sky" summary, fired ~45 min before dusk (or shortly if we're already near it).
 function buildDigestEntry(now, win, rows){
@@ -6237,8 +6281,15 @@ function ingestLaunches(results){
     const vid = pick(r,'vidURLs.0.url') || (Array.isArray(r.vidURLs)&&typeof r.vidURLs[0]==='string'?r.vidURLs[0]:null);
     const info= pick(r,'infoURLs.0.url')|| (Array.isArray(r.infoURLs)&&typeof r.infoURLs[0]==='string'?r.infoURLs[0]:null);
     const lat = pad.latitude!=null?parseFloat(pad.latitude):NaN, lng=pad.longitude!=null?parseFloat(pad.longitude):NaN;
+    // Booster recovery, when the detailed feed carries it (SpaceX RTLS / droneship, etc.).
+    const lst = pick(r,'rocket.launcher_stage.0');
+    const landing = (lst && lst.landing) ? {
+      attempt: lst.landing.attempt!==false,
+      type: pick(lst,'landing.type.abbrev') || pick(lst,'landing.type.name') || '',
+      loc:  pick(lst,'landing.location.abbrev') || pick(lst,'landing.location.name') || ''
+    } : null;
     return {
-      id:r.id, name:r.name||'Launch',
+      id:r.id, name:r.name||'Launch', landing,
       provider:pick(r,'launch_service_provider.name')||'—',
       rocket:pick(r,'rocket.configuration.full_name')||pick(r,'rocket.configuration.name')||'—',
       mission:pick(r,'mission.name')||r.name||'—',
@@ -6251,7 +6302,7 @@ function ingestLaunches(results){
       image:img, vidURL:vid, infoURL:info
     };
   }).filter(l=>l.net);
-  buildLaunchPins(); updateLegendCounts(); renderLaunchList(); renderFrame(); scanLaunchAlerts(); tryOpenTarget();
+  buildLaunchPins(); updateLegendCounts(); renderLaunchList(); renderFrame(); scanLaunchAlerts(); syncLaunchLiveNotif(); tryOpenTarget();
 }
 function buildLaunchPins(){
   const byPad={};
@@ -6312,6 +6363,20 @@ function renderLaunchDetail(l){
   h+='<div class="d-badges"><span class="d-badge b-launch">'+esc(l.statusAbbrev||l.status||'TBD')+'</span>'+
      (l.orbit?'<span class="d-badge">'+esc(l.orbit)+'</span>':'')+'</div>';
   h+='<div class="lc-count" id="lc-count">'+countdownStr(l.net)+'</div>';
+  // "Visible from you?" verdict (needs a location).
+  const vis=launchVisibility(l);
+  if(vis) h+='<div class="lc-vis '+vis.cls+'"><span class="lc-vis-h">🔭 Visible from you? <b>'+vis.verdict+'</b> · '+vis.dist+' km</span>'+
+    '<span class="lc-vis-n">'+esc(vis.note)+'</span></div>';
+  else if(!observer) h+='<div class="lc-vis"><span class="lc-vis-h">🔭 Visible from you?</span><span class="lc-vis-n">Set your location (⌖) to check.</span></div>';
+  // Booster recovery.
+  if(l.landing && l.landing.attempt) h+='<div class="lc-land">🪂 Booster landing attempt'+
+    (l.landing.type?(' · '+esc(l.landing.type)):'')+(l.landing.loc?(' · '+esc(l.landing.loc)):'')+'</div>';
+  // Follow → milestone alerts + a pinned live countdown (Android) as the launch nears.
+  if(l.net && l.net.getTime()>Date.now()-8*60000){
+    const f=isFollowingLaunch(l.id);
+    h+='<button class="lc-follow'+(f?' on':'')+'" data-follow="1">'+
+      (f?'★ Following · live countdown pinned':'☆ Follow · alerts + live countdown')+'</button>';
+  }
   if(currentUser){ const e=seenEntry(l.id), c=e?(e.count||1):0;
     const watched = webcastWatched(l.id);
     h+='<div class="lc-seen">'+
@@ -6333,6 +6398,7 @@ function renderLaunchDetail(l){
   box.innerHTML=h;
   box.querySelectorAll('.lc-seenbtn[data-how]').forEach(b=>b.onclick=()=>logLaunchSighting(l, b.dataset.how));
   const wb=box.querySelector('.lc-seenbtn[data-webcast]'); if(wb) wb.onclick=()=>logWebcast(l);
+  const fl=box.querySelector('[data-follow]'); if(fl) fl.onclick=()=>toggleFollowLaunch(l);
   const rm=box.querySelector('.lc-rm'); if(rm) rm.onclick=()=>removeSeen(l.id, l.rocket);
   const im=box.querySelector('.d-photo'); if(im && l.image) im.onclick=()=>openLightbox([l.image], 0);
 }
@@ -6383,9 +6449,38 @@ async function logWebcast(l){
 function launchBand(dt){
   if(dt < -120e3) return null;
   if(dt <= 120e3) return 'liftoff';
+  if(dt <= 600e3) return '10m';
   if(dt <= 3600e3) return '1h';
   if(dt <= 864e5) return 'day';
   return null;
+}
+// Great-circle distance (km) and initial bearing between two lat/lng points.
+function gcKm(lat1,lon1,lat2,lon2){ const R=6371, tr=Math.PI/180;
+  const dLa=(lat2-lat1)*tr, dLo=(lon2-lon1)*tr;
+  const a=Math.sin(dLa/2)**2+Math.cos(lat1*tr)*Math.cos(lat2*tr)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(a))); }
+function bearingTo(lat1,lon1,lat2,lon2){ const tr=Math.PI/180;
+  const y=Math.sin((lon2-lon1)*tr)*Math.cos(lat2*tr);
+  const x=Math.cos(lat1*tr)*Math.sin(lat2*tr)-Math.sin(lat1*tr)*Math.cos(lat2*tr)*Math.cos((lon2-lon1)*tr);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360; }
+// "Visible from you?" — rockets are visible far further at dawn/dusk (sunlit high-altitude plume)
+// than in daylight. Combine distance to the pad with the Sun's elevation at launch time.
+function launchVisibility(l){
+  if(!observer || typeof l.lat!=='number' || typeof l.lng!=='number') return null;
+  const dist=gcKm(observer.lat, observer.lng, l.lat, l.lng);
+  const look=azCompass(bearingTo(observer.lat, observer.lng, l.lat, l.lng));
+  const t=l.net?l.net.getTime():Date.now();
+  const sun=sunElevAt(t);
+  const twilight = sun!=null && sun<0 && sun>-18;          // plume can still catch sunlight
+  const dark = sun!=null && sun<=-6;
+  let verdict, cls, note;
+  if(dist<=60){ verdict='Very likely'; cls='great'; note='You’re right by the pad — you should see it climb'+(dist<25?' and maybe hear it.':'.'); }
+  else if(dist<=300 && (dark||twilight)){ verdict='Likely'; cls='great'; note='Close enough to catch the ascent in a dark sky — look '+look+'.'; }
+  else if(dist<=300){ verdict='Possible'; cls='good'; note='Close, but a daytime launch is hard to spot past the immediate area — look '+look+'.'; }
+  else if(dist<=1200 && twilight){ verdict='Possible'; cls='good'; note='A twilight launch can throw a glowing high-altitude plume this far — look low, '+look+'.'; }
+  else if(dist<=1200 && dark){ verdict='Slim'; cls='fair'; note='Only the highest part of the ascent might show, low on the horizon '+look+'.'; }
+  else { verdict='Unlikely'; cls='poor'; note='Too far ('+Math.round(dist)+' km) for a ground view from here.'; }
+  return { verdict, cls, dist:Math.round(dist), look, note };
 }
 function showNotif(title, opts){
   try{
@@ -6399,23 +6494,91 @@ function scanLaunchAlerts(){
   if(inQuietHours() || muteActive()) return;
   if(!appIsVisible() && (!('Notification' in window) || Notification.permission!=='granted')) return;
   const now=Date.now();
-  const msg={ day:'launches within 24 hours', '1h':'launches within the hour', liftoff:'is lifting off now' };
+  const msg={ day:'launches within 24 hours', '1h':'launches within the hour', '10m':'launches in 10 minutes', liftoff:'is lifting off now' };
+  const kick={ day:'Launch in 24 hours', '1h':'Launch within the hour', '10m':'10 minutes to liftoff', liftoff:'Lifting off now' };
   for(const l of LAUNCHES){
     if(!l.net) continue;
-    const band=launchBand(l.net.getTime()-now); if(!band) continue;
-    const key=l.id+':'+band; if(launchNotified.has(key)) continue;
-    launchNotified.add(key);
-    const body=l.mission+' '+msg[band]+(l.padName?(' · '+l.padName):'');
-    dispatchAlert(
-      { hue:'255,107,53', icon:'🚀',
-        kicker: band==='liftoff' ? 'Lifting off now' : band==='1h' ? 'Launch within the hour' : 'Launch in 24 hours',
-        name:l.provider+' · '+l.rocket, desc:body,
-        onTap:()=>openTarget({type:'launch', id:l.id}) },
-      { title:'🚀 '+l.provider+' — '+l.rocket,
-        opts:{ body, tag:'launch-'+l.id+'-'+band, icon:'icon-192.png',
-          badge:'icon-192.png', data:{type:'launch', id:l.id} } });
+    const band=launchBand(l.net.getTime()-now);
+    if(band){
+      const key=l.id+':'+band;
+      if(!launchNotified.has(key)){
+        launchNotified.add(key);
+        const body=l.mission+' '+msg[band]+(l.padName?(' · '+l.padName):'');
+        dispatchAlert(
+          { hue:'255,107,53', icon:'🚀', kicker:kick[band], name:l.provider+' · '+l.rocket, desc:body,
+            onTap:()=>openTarget({type:'launch', id:l.id}) },
+          { title:'🚀 '+l.provider+' — '+l.rocket,
+            opts:{ body, tag:'launch-'+l.id+'-'+band, icon:'icon-192.png', badge:'icon-192.png', data:{type:'launch', id:l.id} } });
+      }
+    }
+    // Booster-landing heads-up (~T+7 min) — separate from the pre-liftoff bands.
+    if(l.landing && l.landing.attempt){
+      const lt=l.net.getTime()+7*60000;
+      if(now>=lt-60000 && now<=lt+4*60000){
+        const key=l.id+':landing';
+        if(!launchNotified.has(key)){ launchNotified.add(key);
+          const body='Landing burn about now'+(l.landing.loc?(' · '+l.landing.loc):'');
+          dispatchAlert(
+            { hue:'150,110,255', icon:'🪂', kicker:'Booster landing', name:l.provider+' · '+l.rocket, desc:body,
+              onTap:()=>openTarget({type:'launch', id:l.id}) },
+            { title:'🪂 '+l.rocket+' booster landing',
+              opts:{ body, tag:'launch-'+l.id+'-landing', icon:'icon-192.png', badge:'icon-192.png', data:{type:'launch', id:l.id} } });
+        }
+      }
+    }
   }
   try{ localStorage.setItem('satmap_launch_notified', JSON.stringify([...launchNotified].slice(-500))); }catch(e){}
+}
+/* ---------- Follow a launch → live countdown notification ----------
+   Android can't post to a "Dynamic Island" from a PWA (no web API), but a persistent, silently-
+   updating notification is the real equivalent: pin it, and the countdown ticks on the lock screen
+   / status area. iOS Safari has no persistent-notification updating, so there it degrades to the
+   milestone alerts. We refresh it every ~20s while the app is alive; the scheduled push milestones
+   cover the moments the app is closed. */
+function isFollowingLaunch(id){ return (prefs.followLaunch||[]).indexOf(id)>=0; }
+async function toggleFollowLaunch(l){
+  const set=new Set(prefs.followLaunch||[]);
+  const now=set.has(l.id);
+  if(now){ set.delete(l.id); } else {
+    set.add(l.id);
+    if(('Notification' in window) && Notification.permission==='default'){ try{ await Notification.requestPermission(); }catch(e){} }
+  }
+  prefs.followLaunch=[...set]; saveSettings();
+  if(!now){ Haptics.toggle(true); showToast('★ Following — live countdown pinned to your notifications', true); }
+  else { Haptics.tap(); showToast('Unfollowed', false); clearLaunchLiveNotif(l.id); }
+  if(prefs.push) syncAlertSchedule(true);            // make sure this launch's milestones are scheduled
+  syncLaunchLiveNotif();
+  if($('d-launch') && selectedLaunch && selectedLaunch.id===l.id) renderLaunchDetail(l);
+}
+function followedImminent(){
+  const now=Date.now();
+  return (LAUNCHES||[]).filter(l=>l.net && isFollowingLaunch(l.id)
+    && l.net.getTime() > now-8*60000 && l.net.getTime() < now+60*60000);   // final hour → +8 min
+}
+let launchLiveTimer=null;
+function clearLaunchLiveNotif(id){
+  if(!navigator.serviceWorker) return;
+  navigator.serviceWorker.ready.then(reg=>reg.getNotifications({tag:'live-'+id}).then(ns=>ns.forEach(n=>n.close()))).catch(()=>{});
+}
+function syncLaunchLiveNotif(){
+  clearTimeout(launchLiveTimer);
+  if(!('Notification' in window) || Notification.permission!=='granted' || !navigator.serviceWorker){ return; }
+  const now=Date.now(), live=followedImminent();
+  navigator.serviceWorker.ready.then(reg=>{
+    for(const l of live){
+      const dt=l.net.getTime()-now;
+      const body=(dt>0 ? countdownStr(l.net) : 'Lifted off — watch it climb')+(l.padName?(' · '+l.padName):'');
+      reg.showNotification('🚀 '+l.provider+' · '+l.rocket, { tag:'live-'+l.id, body,
+        silent:true, requireInteraction:true, renotify:false, icon:'icon-192.png', badge:'icon-192.png',
+        data:{type:'launch', id:l.id} });
+    }
+    // Retire any live notification whose launch is unfollowed or done.
+    reg.getNotifications({}).then(ns=>{ for(const n of ns){ if(!n.tag || !n.tag.startsWith('live-')) continue;
+      const id=n.tag.slice(5), l=(LAUNCHES||[]).find(x=>x.id===id);
+      if(!l || !isFollowingLaunch(id) || !l.net || l.net.getTime()<now-8*60000 || l.net.getTime()>now+60*60000) n.close();
+    } }).catch(()=>{});
+  }).catch(()=>{});
+  if(live.length) launchLiveTimer=setTimeout(syncLaunchLiveNotif, 20000);   // tick the countdown while imminent
 }
 
 /* ---------- Photo lightbox ---------- */
@@ -7145,7 +7308,7 @@ async function boot(){
   scheduleTick();           // start the propagation/render loop (worker- or main-thread-driven)
   setInterval(tickClock, 1000); tickClock();
   setInterval(updateIssOrbit, 30000);  // refresh ISS track periodically
-  setInterval(()=>{ scanAlerts(); scanLaunchAlerts(); syncAlertSchedule(); }, 120000); scanAlerts();  // visible passes + launch alerts
+  setInterval(()=>{ scanAlerts(); scanLaunchAlerts(); syncLaunchLiveNotif(); syncAlertSchedule(); }, 120000); scanAlerts();  // visible passes + launch alerts
   // Data saver: the Starlink bulk download is by far the largest transfer here.
   if(flagOn('starlink') && !(prefs.dataSaver && onMeteredConnection())) setTimeout(loadMoreStarlink, 4000);  // then pull the rest of Starlink in the background
   if(enabled['rocket'] && flagOn('launches')) setTimeout(loadLaunches, 2500);   // fetch upcoming launches in the background
@@ -8963,7 +9126,7 @@ function collectSettings(){
   let zoom=null; try{ zoom=world.pointOfView().altitude; }catch(e){}
   return { groups, lat: observer?observer.lat:null, lng: observer?observer.lng:null, zoom,
     units: prefs.units, time: prefs.time, autorotate: prefs.autorotate, issPath: prefs.issPath, cutoff: prefs.cutoff, music: prefs.music,
-    notify: prefs.notify, notifyGroups: prefs.notifyGroups, notifyTrain: prefs.notifyTrain, notifyAurora: prefs.notifyAurora, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
+    notify: prefs.notify, notifyGroups: prefs.notifyGroups, notifyTrain: prefs.notifyTrain, notifyAurora: prefs.notifyAurora, followLaunch: prefs.followLaunch, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
     shareFeed: prefs.shareFeed, shareLoc: prefs.shareLoc, locPrecise: prefs.locPrecise,
     listed: prefs.listed, ranked: prefs.ranked,
     alertMinEl: prefs.alertMinEl, quiet: prefs.quiet, quietFrom: prefs.quietFrom, quietTo: prefs.quietTo, digest: prefs.digest,
@@ -9018,6 +9181,7 @@ function applySettings(s){
     if(s.notifyGroups && typeof s.notifyGroups==='object') prefs.notifyGroups=Object.assign({iss:true,stations:false,visual:false,rocket:true}, s.notifyGroups);
     if(typeof s.notifyTrain==='boolean') prefs.notifyTrain=s.notifyTrain;
     if(typeof s.notifyAurora==='boolean') prefs.notifyAurora=s.notifyAurora;
+    if(Array.isArray(s.followLaunch)) prefs.followLaunch=s.followLaunch.slice(0,50);
     if(Array.isArray(s.favs)){ const merged=new Set([...favs, ...s.favs]); favs=merged; prefs.favs=[...merged];
       try{ localStorage.setItem('satmap_favs', JSON.stringify(prefs.favs)); }catch(e){} }
     applyPrefs();
