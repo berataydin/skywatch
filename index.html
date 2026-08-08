@@ -1200,8 +1200,8 @@
   /* launch detail card */
   .d-badge.b-launch{background:rgba(255,107,53,.18);color:#ff9a6b;border-color:rgba(255,107,53,.45)}
   .lc-count{font-size:22px;font-weight:700;color:#ff9a6b;font-variant-numeric:tabular-nums;margin:6px 0 12px;letter-spacing:.5px}
-  .lc-seen{display:flex;gap:8px;margin:10px 0 12px}
-  .lc-seenbtn{flex:1;padding:9px 6px;border-radius:10px;border:1px solid var(--border);
+  .lc-seen{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+  .lc-seenbtn{flex:1 1 30%;min-width:104px;padding:9px 6px;border-radius:10px;border:1px solid var(--border);
     background:rgba(120,160,255,.06);color:var(--text);font-size:11.5px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s}
   .lc-seenbtn:hover{background:rgba(87,224,138,.12)}
   .lc-seenbtn.on{background:rgba(87,224,138,.18);border-color:rgba(87,224,138,.5);color:#57e08a}
@@ -3144,7 +3144,7 @@
 </script>
 
 <script>
-const BUILD = 'v250';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v251';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3365,6 +3365,7 @@ const Haptics = (function(){
   }
   return {
     tap()      { fire(8); },                                    // generic control
+    loadtick() { fire(5, 90); },                                // faint "tick" as the constellation streams in
     nav()      { fire(14); },                                   // panel / nav change
     toggle(on) { fire(on ? [12,40,22] : 12); },                 // on feels like it "latches"
     select()   { fire([10,30,10]); },                           // picking an object
@@ -3661,7 +3662,7 @@ async function refreshStaleData(){
 }
 
 /* ---------- Background: load the rest of Starlink (cache-first, then network) ---------- */
-let starlinkFull=false, starlinkLoading=false;
+let starlinkFull=false, starlinkLoading=false, firstStarlinkDone=false;   // firstStarlinkDone: gate the "populating" haptic to the first load
 // Full active constellation on every device — GPU point rendering handles the count, so
 // phones get the whole thing too (headroom left for the constellation to keep growing).
 const STARLINK_MAX = 12000;
@@ -3687,7 +3688,7 @@ async function loadMoreStarlink(){
   try{ const c=JSON.parse(localStorage.getItem(SL_CACHE_KEY)||'null');
     if(c && Array.isArray(c.rows) && c.rows.length && Date.now()-c.ts < SL_TTL){
       addStarlinkRows(c.rows);
-      if(SATS.filter(s=>s.group==='starlink').length >= STARLINK_MAX){ starlinkFull=true; return; }
+      if(SATS.filter(s=>s.group==='starlink').length >= STARLINK_MAX){ starlinkFull=true; firstStarlinkDone=true; return; }
       // Cache only held a subset (localStorage quota trims it) — fall through and fetch the rest.
     } }catch(e){}
   // 2) Otherwise download it (streamed, capped), with one gentle retry on failure.
@@ -3698,7 +3699,7 @@ async function loadMoreStarlink(){
 }
 async function downloadStarlink(){
   let cur=SATS.filter(s=>s.group==='starlink').length;
-  if(cur>=STARLINK_MAX){ starlinkFull=true; return true; }
+  if(cur>=STARLINK_MAX){ starlinkFull=true; firstStarlinkDone=true; return true; }
   const seen=new Set(SATS.map(s=>s.id));
   // Snapshot first (our origin, shared copy), then Celestrak if it's missing or unreachable.
   const urls=[ TLE_SNAP_BASE+'starlink.txt', 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle' ];
@@ -3715,6 +3716,7 @@ async function downloadStarlink(){
     const added=buildSatrecs(batch); added.forEach(s=>{ SATS.push(s); cur++; });
     if(useWorker && propWorker && added.length) propWorker.postMessage({type:'add', tle: added.map(s=>[s.l1,s.l2])});
     batch=[]; updateLegendCounts(); renderFrame();
+    if(!firstStarlinkDone && appIsVisible()) Haptics.loadtick();   // faint "tick" as the count climbs on first load
     await new Promise(r=>setTimeout(r, 90));    // yield so the globe keeps rendering
   };
   const parse=async()=>{ let idx;
@@ -3744,7 +3746,9 @@ async function downloadStarlink(){
       if(done) break;
     }
     await flush();
-    if(collected.length){ saveStarlinkCache(collected); starlinkFull=true; return true; }
+    if(collected.length){ saveStarlinkCache(collected); starlinkFull=true;
+      if(!firstStarlinkDone){ firstStarlinkDone=true; if(prefs.vibrate && appIsVisible()) Haptics.force([7,55,12,55,20]); }   // gentle "all loaded" flourish, then silence
+      return true; }
     return false;   // got nothing usable → allow a retry
   }catch(e){ console.warn('starlink download', e); return false; }
 }
@@ -6327,7 +6331,8 @@ function renderLaunchDetail(l){
   if(l.infoURL && l.infoURL!==l.vidURL) links.push('<a href="'+esc(l.infoURL)+'" target="_blank" rel="noopener">Details</a>');
   h+='<div class="d-src">'+(links.length?links.join(' · ')+' · ':'')+'Data: The Space Devs</div>';
   box.innerHTML=h;
-  box.querySelectorAll('.lc-seenbtn').forEach(b=>b.onclick=()=>logLaunchSighting(l, b.dataset.how));
+  box.querySelectorAll('.lc-seenbtn[data-how]').forEach(b=>b.onclick=()=>logLaunchSighting(l, b.dataset.how));
+  const wb=box.querySelector('.lc-seenbtn[data-webcast]'); if(wb) wb.onclick=()=>logWebcast(l);
   const rm=box.querySelector('.lc-rm'); if(rm) rm.onclick=()=>removeSeen(l.id, l.rocket);
   const im=box.querySelector('.d-photo'); if(im && l.image) im.onclick=()=>openLightbox([l.image], 0);
 }
@@ -6353,6 +6358,27 @@ async function markLaunchSeen(l, how){
     if(myProfile.unameLower){ try{ await setDoc(doc(db,'usernames',myProfile.unameLower), {badges:count}, {merge:true}); }catch(e){} }
     showToast(msg, added);
   }catch(e){ console.error(e); showErr('Could not save: '+(e.code||e.message||e)); }
+}
+// "Watched the webcast" — a distinct log from a physical sighting (no location check; you watched a
+// stream). Deduped per launch and counted for the Launch Party award. Tapping again un-logs it.
+function webcastWatched(id){ const x=(myProfile&&myProfile.stats)||{}; return Array.isArray(x.webcastIds) && x.webcastIds.indexOf(id)>=0; }
+async function logWebcast(l){
+  if(!currentUser||!window.fb||!myProfile){ showErr('Sign in to log this (account icon, top-right).'); return; }
+  if(!myProfile.username){ showErr('Choose a username first (Friends tab).'); return; }
+  const cur=Object.assign({}, myProfile.stats||{});
+  const set=new Set(Array.isArray(cur.webcastIds)?cur.webcastIds:[]);
+  const removing=set.has(l.id);
+  if(removing) set.delete(l.id); else set.add(l.id);
+  cur.webcastIds=[...set]; cur.webcast=set.size; myProfile.stats=cur;   // optimistic
+  try{ const {db, doc, setDoc}=window.fb;
+    await setDoc(doc(db,'profiles',currentUser.uid), {stats:cur}, {merge:true});
+    if(!removing) checkNewAchievements();
+    await syncPublicSummary();
+  }catch(e){ console.warn('webcast', e); }
+  if(removing){ showToast('Removed webcast log', false); }
+  else { Haptics.success(); try{ SFX.success(); }catch(e){}
+    showToast('📺 Webcast logged'+(cur.webcast<5?(' · '+cur.webcast+'/5 to Launch Party'):''), true); }
+  renderLaunchDetail(l);
 }
 function launchBand(dt){
   if(dt < -120e3) return null;
