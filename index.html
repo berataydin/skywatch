@@ -816,7 +816,26 @@
   .nt-score.fair{background:rgba(255,211,77,.14);border-color:rgba(255,211,77,.4);color:#ffd34d}
   .nt-score.poor{background:rgba(255,122,107,.12);border-color:rgba(255,122,107,.35);color:#ff9a86}
   .nt-verdict{display:flex;align-items:center;gap:11px;margin:2px 2px 10px;padding:12px 14px;border-radius:13px;
+    border:1px solid var(--border);background:rgba(120,160,255,.06);width:100%;text-align:left;cursor:pointer;font:inherit;color:inherit}
+  .nt-verdict:hover{border-color:rgba(var(--neon-c),.4)}
+  .nt-vchev{margin-left:auto;font-size:24px;line-height:1;color:var(--muted);flex:0 0 auto}
+  .nt-mute{width:100%;margin:14px 0 4px;padding:11px;border-radius:12px;cursor:pointer;font:inherit;
+    font-size:12.5px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--border)}
+  .nt-mute:hover{color:var(--text);border-color:rgba(120,160,255,.35)}
+  .nt-mute.muted{color:#c9b6ff;border-color:rgba(150,130,220,.5);background:rgba(150,130,220,.1)}
+  /* Score-breakdown rows in the modal */
+  .sb-bar{height:6px;border-radius:4px;background:rgba(120,160,255,.14);overflow:hidden;margin-top:5px}
+  .sb-bar i{display:block;height:100%;border-radius:4px;background:rgb(var(--neon-c))}
+  .sb-row{padding:11px 0;border-bottom:1px solid rgba(120,160,255,.08)}
+  .sb-row:last-child{border-bottom:none}
+  .sb-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .sb-top b{font-size:13.5px;color:var(--text)}
+  .sb-top span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .sb-note{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .sb-final{display:flex;align-items:center;gap:12px;margin-bottom:6px;padding:12px 13px;border-radius:12px;
     border:1px solid var(--border);background:rgba(120,160,255,.06)}
+  .sb-final b{font-size:26px;font-weight:800;line-height:1}
+  .sb-final small{font-size:11px;color:var(--muted)}
   .nt-verdict .nt-vscore{flex:0 0 auto;width:52px;height:52px;border-radius:13px;display:flex;flex-direction:column;
     align-items:center;justify-content:center;font-weight:800}
   .nt-verdict .nt-vscore b{font-size:20px;line-height:1}
@@ -3121,7 +3140,7 @@
 </script>
 
 <script>
-const BUILD = 'v247';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v248';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4802,6 +4821,35 @@ function computeSatPasses(sat){
 const ALERT_LEAD_MS = 6*60000;                 // notify ~6 min before a visible pass
 const notifiedKeys = (()=>{ try{ return new Set(JSON.parse(localStorage.getItem('satmap_notified')||'[]')); }catch(e){ return new Set(); } })();
 function saveNotified(){ try{ localStorage.setItem('satmap_notified', JSON.stringify([...notifiedKeys].slice(-200))); }catch(e){} }
+/* "Not watching tonight" — mute every alert until tomorrow morning. Suppresses in-app cards + the
+   uploaded push schedule (buildAlertSchedule drops muted entries) + the server (users/{uid}.muteUntil). */
+let muteUntil = (()=>{ try{ return +localStorage.getItem('skywatch_muteuntil')||0; }catch(e){ return 0; } })();
+function muteActive(){ return Date.now() < muteUntil; }
+function nextMorning(){
+  const d=new Date(); d.setHours(6,0,0,0);                  // 6am today…
+  if(Date.now() >= d.getTime()) d.setDate(d.getDate()+1);   // …or tomorrow if it's already past
+  return d.getTime();
+}
+async function muteTonight(){
+  const win = observer ? tonightWindow(Date.now()) : null;
+  muteUntil = Math.max(win ? win.end+30*60000 : 0, nextMorning());   // through the dark window, at least till morning
+  try{ localStorage.setItem('skywatch_muteuntil', String(muteUntil)); }catch(e){}
+  if(currentUser && window.fb){ try{ const {db,doc,setDoc}=window.fb;
+    await setDoc(doc(db,'users',currentUser.uid), {muteUntil}, {merge:true}); }catch(e){} }
+  syncAlertSchedule(true);                                  // re-upload without tonight's now-muted alerts
+  if($('night-out') && ntData) renderNightList();
+  showPremiumCard({ hue:'150,160,200', icon:'🔕', kicker:'Muted for tonight',
+    name:'I’ll leave you be', desc:'No more alerts until the morning. Tap to undo.',
+    ms:7000, onTap:unmuteTonight });
+}
+function unmuteTonight(){
+  muteUntil=0; try{ localStorage.removeItem('skywatch_muteuntil'); }catch(e){}
+  if(currentUser && window.fb){ try{ const {db,doc,setDoc}=window.fb;
+    setDoc(doc(db,'users',currentUser.uid), {muteUntil:0}, {merge:true}); }catch(e){} }
+  syncAlertSchedule(true);
+  if($('night-out') && ntData) renderNightList();
+  showToast('🔔 Alerts back on', true);
+}
 async function enableNotifications(){
   if(!('Notification' in window)){ showErr('Notifications aren’t supported in this browser.'); return false; }
   let p=Notification.permission;
@@ -5101,11 +5149,12 @@ function buildAlertSchedule(cb){
     }
     if(i<objs.length) return setTimeout(chunk,30);
     out.sort((a,b)=>a.t-b.t);
-    const final = out.slice(0, PUSH_MAX);
+    let final = out.slice(0, PUSH_MAX);
     const dg = buildDigestEntry(now, win, digestRows);     // one evening summary, appended after the cap
     if(dg){ final.push(dg); final.sort((a,b)=>a.t-b.t); }
     const tr = buildTrainAlert(now, win);                  // a heads-up before tonight's Starlink train
     if(tr){ final.push(tr); final.sort((a,b)=>a.t-b.t); }
+    if(muteActive()) final = final.filter(e=>e.t >= muteUntil);   // "not watching tonight" — drop everything until morning
     cb(final);
   })();
 }
@@ -5137,12 +5186,23 @@ function buildDigestEntry(now, win, rows){
   const best=new Map();
   for(const r of rows){ const b=best.get(r.id); if(!b || r.peakEl>b.peakEl) best.set(r.id, r); }
   const all=[...best.values()];
+  // Lead the digest with the "worth it?" verdict. Score each pass (using the cached cloud forecast
+  // if we have one) and headline the best.
+  const cloudData = cloudCache ? cloudCache.data : null;
+  const bestScore = all.reduce((m,r)=>{
+    const sat=SATS.find(s=>s.id===r.id);
+    return Math.max(m, scorePassRaw(sat, r.peakEl, r.start, cloudData).score);
+  }, 0);
+  const v=scoreVerdict(bestScore);
+  const emoji = v[0]==='great'?'🌟' : v[0]==='good'?'🌌' : v[0]==='fair'?'🌥️' : '☁️';
   const top=all.slice().sort((a,b)=>b.peakEl-a.peakEl).slice(0,3).sort((a,b)=>a.start-b.start);
   const clean=nm=>String(nm||'').replace(/\s*\(.*/,'').trim();
   const parts=top.map(r=>clean(r.name)+' '+fmtPassTime(r.start)+' ('+Math.round(r.peakEl)+'°)');
-  return { t:fireT, title:'🌌 Tonight’s sky',
+  return { t:fireT, title:emoji+' Tonight: '+v[1]+' · '+bestScore+'/100',
     body: all.length+' pass'+(all.length>1?'es':'')+' worth a look — '+parts.join(', '),
-    tag:'digest-'+dayStr(win.start), data:{type:'digest'} };
+    tag:'digest-'+dayStr(win.start), data:{type:'digest'},
+    // First notification of the night — let people bow out with one tap (handled in the SW + app).
+    actions:[{action:'mute', title:'Not watching tonight'}, {action:'open', title:'Show me'}] };
 }
 let schedTimer=null, schedLast=0;
 function syncAlertSchedule(force){
@@ -5183,6 +5243,7 @@ function alertObjects(){
 function scanAlerts(){
   // Permission is only needed for the system path — an in-app card needs nothing.
   if(!prefs.notify || !observer) return;
+  if(muteActive()) return;                       // "not watching tonight" — stay silent until morning
   if(!appIsVisible() && (!('Notification' in window) || Notification.permission!=='granted')) return;
   const now=Date.now();
   // Starlink-train heads-up (a sub-option of pass alerts).
@@ -6223,7 +6284,7 @@ function showNotif(title, opts){
 }
 function scanLaunchAlerts(){
   if(!prefs.notify || !(prefs.notifyGroups && prefs.notifyGroups.rocket)) return;
-  if(inQuietHours()) return;
+  if(inQuietHours() || muteActive()) return;
   if(!appIsVisible() && (!('Notification' in window) || Notification.permission!=='granted')) return;
   const now=Date.now();
   const msg={ day:'launches within 24 hours', '1h':'launches within the hour', liftoff:'is lifting off now' };
@@ -6893,8 +6954,16 @@ async function boot(){
   // Deep link: clicked notification (cold start via #sel=, or live via SW message)
   const ht=targetFromHash();
   if(ht){ try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){} openTarget(ht); }
+  // "Not watching tonight" from the digest notification — cold start via #mute, or live via SW message.
+  if(/(^|[#&])mute\b/.test(location.hash||'')){
+    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    setTimeout(muteTonight, 600);          // let auth/settings settle so the server write lands
+  }
   if('serviceWorker' in navigator)
-    navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.satmapSelect) openTarget(e.data.satmapSelect); });
+    navigator.serviceWorker.addEventListener('message', e=>{
+      if(e.data && e.data.satmapSelect) openTarget(e.data.satmapSelect);
+      if(e.data && e.data.satmapMute) muteTonight();
+    });
 }
 
 /* ---------- Mobile sheets + bottom toolbar ---------- */
@@ -8716,6 +8785,8 @@ function applySettings(s){
     ['shareFeed','shareLoc','locPrecise','listed','ranked','quiet','nightMode','dataSaver','digest']
       .forEach(k=>{ if(typeof s[k]==='boolean') prefs[k]=s[k]; });
     ['alertMinEl','quietFrom','quietTo'].forEach(k=>{ if(typeof s[k]==='number') prefs[k]=s[k]; });
+    if(typeof s.muteUntil==='number' && s.muteUntil>muteUntil){ muteUntil=s.muteUntil;   // carry a "not watching tonight" across devices
+      try{ localStorage.setItem('skywatch_muteuntil', String(muteUntil)); }catch(e){} }
     mergeSightLog(s.sightLog);   // union device + account sighting history
     if(s.time==='12'||s.time==='24') prefs.time=s.time;
     if(typeof s.music==='boolean') prefs.music=s.music;
@@ -10238,32 +10309,68 @@ function ntGrade(el){ return el>=70 ? ['best','Superb'] : el>=45 ? ['good','Good
    and (the big one) how cloudy it'll be at pass time. Cloud is a multiplier, so a perfect
    pass under overcast scores near zero — which is the honest answer. */
 const ntClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function passScore(r){
-  const p=r.p, sat=r.sat;
+// Core scorer — usable both from the Tonight UI (passScore) and the background digest builder.
+function scorePassRaw(sat, peakEl, start, cloudData){
   // Intrinsic brightness of the object (ISS is unmistakable; the "visual" group is bright by definition).
-  const bright = (sat.id==='25544') ? 1.0
-    : (sat.group==='stations') ? 0.82
-    : (sat.group==='visual') ? 0.6 : 0.45;
-  const elev = ntClamp((p.peakEl-15)/70, 0, 1);              // 15°→0, 85°→1 (higher passes are brighter + easier)
+  const bright = (sat && sat.id==='25544') ? 1.0
+    : (sat && sat.group==='stations') ? 0.82
+    : (sat && sat.group==='visual') ? 0.6 : 0.45;
+  const elev = ntClamp((peakEl-15)/70, 0, 1);                // 15°→0, 85°→1 (higher passes are brighter + easier)
   let vis = 0.45*bright + 0.55*elev;
   vis = Math.max(vis, elev*bright);                          // a dim, low pass never rates highly
   // Darker sky = better contrast. Sun −6°→ok, −14°+→excellent.
-  const sun = sunElevAt(p.start);
+  const sun = sunElevAt(start);
   const dark = (sun==null) ? 0.85 : ntClamp((-sun-6)/8, 0, 1);
   // Moonlight washes out faint passes; bright/high ones shrug it off.
-  const mo = moonInfo(p.start);
+  const mo = moonInfo(start);
   const moonUp = (mo && mo.el!=null && mo.el>0) ? ntClamp(mo.el/35,0,1) : 0;
   const moonPenalty = (moonUp * (mo?mo.illum:0)) * (1-vis) * 0.45;
   const base = ntClamp(vis*(0.7+0.3*dark) - moonPenalty, 0, 1);
   // Cloud cover at pass time — the veto factor. Unknown (forecast not loaded) → don't penalize.
-  const cloud = ntData && ntData.cloud ? cloudAt(ntData.cloud, p.start) : null;
+  const cloud = cloudData ? cloudAt(cloudData, start) : null;
   const cloudMult = (cloud==null) ? null : ntClamp(1 - Math.pow(cloud/100, 1.3), 0.05, 1);
   const score = Math.round((cloudMult==null ? base : base*cloudMult) * 100);
-  return { score, cloud, cloudKnown: cloud!=null };
+  return { score, cloud, cloudKnown: cloud!=null,
+    f:{ bright, elev, vis, sun, dark, moonIllum:(mo?mo.illum:null), moonEl:(mo?mo.el:null), moonPenalty, base, cloudMult, peakEl } };
 }
+function passScore(r){ return scorePassRaw(r.sat, r.p.peakEl, r.p.start, ntData && ntData.cloud); }
 function scoreVerdict(score){
   return score>=72 ? ['great','Worth it'] : score>=50 ? ['good','Decent night']
     : score>=30 ? ['fair','Marginal'] : ['poor','Skip tonight'];
+}
+const VERDICT_RGB={great:'87,224,138',good:'90,209,255',fair:'255,211,77',poor:'255,122,107'};
+// Break the fused score down into the four factors that produced it — opened from the verdict.
+function showScoreBreakdown(r){
+  if(!r || !r._sc){ return; }
+  const sc=r._sc, f=sc.f, sat=r.sat, v=scoreVerdict(sc.score);
+  const pct=x=>Math.round(ntClamp(x,0,1)*100);
+  const bar=(x,label,note)=>'<div class="sb-row"><div class="sb-top"><b>'+label+'</b><span>'+pct(x)+'/100</span></div>'+
+    '<div class="sb-bar"><i style="width:'+Math.max(2,pct(x))+'%"></i></div>'+(note?('<div class="sb-note">'+note+'</div>'):'')+'</div>';
+  const brightNote = f.bright>=1 ? 'It’s the ISS — the brightest thing in the sky.'
+    : f.bright>=0.8 ? 'A bright, easy naked-eye object.'
+    : f.bright>=0.6 ? 'A naked-eye-bright object.'
+    : 'A fainter object, so it leans on a high pass to stand out.';
+  const darkNote = f.sun==null ? 'Sky darkness couldn’t be computed.'
+    : 'Sun '+Math.round(f.sun)+'° at pass time — '+(f.dark>=0.9?'proper darkness.':f.dark>=0.5?'usable twilight.':'still fairly bright twilight.');
+  const moonClarity = 1 - ntClamp(f.moonPenalty*3, 0, 1);
+  const moonNote = (f.moonEl==null || f.moonEl<=0) ? 'Moon is below the horizon — no interference.'
+    : 'Moon '+Math.round((f.moonIllum||0)*100)+'% lit, '+Math.round(f.moonEl)+'° up — '+(f.moonPenalty>0.12?'washing out fainter passes.':'only minor interference.');
+  const cloudNote = !sc.cloudKnown ? 'Cloud forecast still loading — this score is sky-conditions only for now.'
+    : (sc.cloud<20?'Skies look clear ('+Math.round(sc.cloud)+'% cloud).'
+      : sc.cloud<60?Math.round(sc.cloud)+'% cloud at pass time — some risk.'
+      : Math.round(sc.cloud)+'% cloud — likely washed out.');
+  let html='<div class="sb-final" style="--neon-c:'+(VERDICT_RGB[v[0]])+'">'+
+    '<b style="color:rgb(var(--neon-c))">'+sc.score+'</b>'+
+    '<div><b style="font-size:14px;color:var(--text)">'+v[1]+' tonight</b>'+
+    '<small>'+esc(shortName(sat.name))+' · '+fmtPassTime(r.p.start)+' · peaks '+Math.round(r.p.peakEl)+'°</small></div></div>'+
+    '<div class="usr-note">Four things decide whether a pass is worth stepping outside for. The first three set the sky quality; cloud then multiplies it — so a perfect pass under overcast still scores low.</div>';
+  html+=bar(f.vis,'🔆 Brightness &amp; altitude', brightNote);
+  html+=bar(f.dark,'🌒 Sky darkness', darkNote);
+  html+=bar(moonClarity,'🌙 Moonlight', moonNote);
+  html+=bar(f.cloudMult==null?0:f.cloudMult,'☁️ Cloud cover', cloudNote);
+  html+='<div class="sb-note" style="margin-top:11px">Sky quality lands at <b>'+pct(f.base)+'/100</b>; cloud then '+
+    (f.cloudMult==null?'is still pending':('×'+f.cloudMult.toFixed(2)))+' → <b>'+sc.score+'/100</b>.</div>';
+  openList('Worth it tonight?', html);
 }
 /* Tonight → Achievements bridge. A small shaking trophy sits next to any object that could
    move you toward an award you HAVEN'T earned yet; tapping it jumps to that award's detail
@@ -10315,9 +10422,11 @@ function renderNightList(){
     '<div class="nt-sub">About '+dur+' hours of usable darkness. Moon '+Math.round(mo.illum*100)+'% lit'+
     (mo.el!=null && mo.el<0 ? ', below the horizon at dusk' : '')+
     (mo.illum>.6 && mo.el!=null && mo.el>10 ? ' — bright enough to wash out faint passes' : '')+'.</div></div>';
-  // "Worth it tonight?" headline verdict — the best pass's fused score, plus the why.
+  // "Worth it tonight?" headline verdict — the best pass's fused score, plus the why. Tap for the breakdown.
   if(ntData.all.length){
-    const bestSc=ntData.all.reduce((m,r)=>Math.max(m,r._sc.score),0);
+    const bestRow=ntData.all.reduce((m,r)=>(!m||r._sc.score>m._sc.score)?r:m, null);
+    ntData._best=bestRow;
+    const bestSc=bestRow._sc.score;
     const v=scoreVerdict(bestSc);
     const moonWash = mo.illum>.6 && mo.el!=null && mo.el>10;
     let why = bestSc>=72 ? 'Clear, high passes on offer — get outside.'
@@ -10326,8 +10435,10 @@ function renderNightList(){
                                    : (moonWash ? 'Bright moon tonight — only the boldest passes cut through.' : 'Only low or faint passes tonight.'))
       : (ntData.cloud ? 'Clouds are set to wash out tonight’s passes.' : 'Slim pickings — maybe another night.');
     if(!ntData.cloud) why += ' (Cloud forecast loading…)';
-    h+='<div class="nt-verdict '+v[0]+'"><div class="nt-vscore"><b>'+bestSc+'</b><small>best</small></div>'+
-       '<div class="nt-vtx"><b>'+v[1]+' tonight</b><small>'+why+'</small></div></div>';
+    h+='<button class="nt-verdict '+v[0]+'" data-verdict="1" title="Tap to see what went into this score">'+
+       '<div class="nt-vscore"><b>'+bestSc+'</b><small>best</small></div>'+
+       '<div class="nt-vtx"><b>'+v[1]+' tonight</b><small>'+why+'</small></div>'+
+       '<span class="nt-vchev">›</span></button>';
   }
   // Overall cloud outlook for the passes we're about to list.
   if(ntData.cloud){
@@ -10390,7 +10501,13 @@ function renderNightList(){
         (l.padName?(' · '+esc(l.padName)):'')+'</span></span>'+ltr+'</button>';
     }
   }
+  h += muteActive()
+    ? '<button class="nt-mute muted" data-unmute="1">🔕 Muted for tonight — tap to turn alerts back on</button>'
+    : '<button class="nt-mute" data-mute="1">🔕 Not watching tonight? Mute alerts till morning</button>';
   out.innerHTML=h;
+  const vb=out.querySelector('[data-verdict]'); if(vb) vb.onclick=()=>showScoreBreakdown(ntData&&ntData._best);
+  const mb=out.querySelector('[data-mute]'); if(mb) mb.onclick=muteTonight;
+  const ub=out.querySelector('[data-unmute]'); if(ub) ub.onclick=unmuteTonight;
   const f=$('night-filter');
   if(f) f.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     ntQuality=b.dataset.q; renderNightList(); markTonightProgress(); });

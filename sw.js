@@ -1,5 +1,5 @@
 /* SkyWatch service worker — app-shell caching + offline fallback */
-const VERSION = 'skywatch-v247';
+const VERSION = 'skywatch-v248';
 const SHELL = [
   './',
   './index.html',
@@ -66,13 +66,14 @@ self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   if (e.action === 'dismiss') return;                 // watch/notification action button
   const data = e.notification.data || {};
-  const sel = (data.type && data.id) ? (data.type + ':' + data.id) : '';
+  const mute = e.action === 'mute';                    // "Not watching tonight" — silence the rest of the night
+  const sel = (!mute && data.type && data.id) ? (data.type + ':' + data.id) : '';
   e.waitUntil((async () => {
     const cs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of cs) {
-      if ('focus' in c) { await c.focus(); if (sel) c.postMessage({ satmapSelect: data }); return; }
+      if ('focus' in c) { await c.focus(); if (mute) c.postMessage({ satmapMute: true }); else if (sel) c.postMessage({ satmapSelect: data }); return; }
     }
-    if (self.clients.openWindow) return self.clients.openWindow(sel ? ('./#sel=' + encodeURIComponent(sel)) : './');
+    if (self.clients.openWindow) return self.clients.openWindow(mute ? './#mute' : (sel ? ('./#sel=' + encodeURIComponent(sel)) : './'));
   })());
 });
 
