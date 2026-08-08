@@ -2727,6 +2727,10 @@
       <div class="lbl">🚂 Starlink trains<small>A heads-up before a string-of-pearls pass</small></div>
       <div class="switch" id="nt-train" role="switch"></div>
     </div>
+    <div class="stg">
+      <div class="lbl">🌌 Aurora watch<small>When a geomagnetic storm could bring aurora to your latitude</small></div>
+      <div class="switch" id="nt-aurora" role="switch"></div>
+    </div>
   </div>
   <div class="stg-sec">Feedback</div>
   <div class="tip-note">Something broken, or an idea? This reaches the developer directly.</div>
@@ -3140,7 +3144,7 @@
 </script>
 
 <script>
-const BUILD = 'v249';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v250';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3235,7 +3239,7 @@ const selMarker = {lat:null, lng:null, alt:0, _sel:true};   // pulsing highlight
 function simNow(){ return Date.now(); }
 // User preferences (synced to the signed-in account)
 const prefs = { units:'metric', time:'24', autorotate:true, issPath:true, cutoff:0, music:true,
-  notify:true, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, notifyTrain:true, favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:true,   // alerts + background push default ON (browsers still require a one-time permission grant before a real push can deliver)
+  notify:true, notifyGroups:{ iss:true, stations:false, visual:false, rocket:true }, notifyTrain:true, notifyAurora:true, favs:[], theme:'real', borders:false, sounds:true, vibrate:true, push:true,   // alerts + background push default ON (browsers still require a one-time permission grant before a real push can deliver)
   // Privacy — every one of these defaults to the least surprising option.
   shareFeed:true, shareLoc:true, locPrecise:true, listed:true, ranked:true,
   // Alerts
@@ -5154,6 +5158,8 @@ function buildAlertSchedule(cb){
     if(dg){ final.push(dg); final.sort((a,b)=>a.t-b.t); }
     const tr = buildTrainAlert(now, win);                  // a heads-up before tonight's Starlink train
     if(tr){ final.push(tr); final.sort((a,b)=>a.t-b.t); }
+    const au = buildAuroraAlert(now, win);                 // aurora watch when a storm could reach this latitude
+    if(au){ final.push(au); final.sort((a,b)=>a.t-b.t); }
     if(muteActive()) final = final.filter(e=>e.t >= muteUntil);   // "not watching tonight" — drop everything until morning
     cb(final);
   })();
@@ -5175,6 +5181,72 @@ function buildTrainAlert(now, win){
   return { t:fireT, title:'🚂 Starlink train tonight',
     body:'~'+tr.count+' satellites in a line in ~'+Math.round(ALERT_LEAD_MS/60000)+' min · look '+tr.az+', up to '+tr.peakEl+'°',
     tag:'train-'+Math.round(tr.start/60000), data:{type:'train'} };
+}
+/* ---------- Aurora / space-weather ----------
+   NOAA SWPC publishes a free, key-less 3-day planetary Kp forecast. We cache it, then decide
+   whether tonight's peak Kp is high enough that aurora could reach THIS user's latitude — using a
+   dipole geomagnetic-latitude estimate so the bar is stricter the further from the poles you are. */
+let kpCache=null;
+async function getKpForecast(){
+  if(kpCache && Date.now()-kpCache.at < 30*60000) return kpCache.data;   // refresh at most twice an hour
+  try{
+    const r=await fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json');
+    if(!r.ok) return kpCache?kpCache.data:null;
+    const j=await r.json();
+    const data=(Array.isArray(j)?j:[]).map(e=>({ t:Date.parse((e.time_tag||'')+'Z'), kp:+e.kp }))
+      .filter(e=>isFinite(e.t) && isFinite(e.kp));
+    kpCache={at:Date.now(), data};
+    return data;
+  }catch(e){ return kpCache?kpCache.data:null; }
+}
+function cachedKp(){ return kpCache ? kpCache.data : null; }
+// Geomagnetic latitude via a centred-dipole model (north geomagnetic pole ≈ 80.65°N, 72.68°W).
+// This is why aurora reaches lower *geographic* latitudes over North America than over Europe.
+function geomagLat(latDeg, lonDeg){
+  const pLat=80.65*D2R, pLon=-72.68*D2R, lat=latDeg*D2R, lon=lonDeg*D2R;
+  const s=Math.sin(lat)*Math.sin(pLat)+Math.cos(lat)*Math.cos(pLat)*Math.cos(lon-pLon);
+  return Math.asin(Math.max(-1,Math.min(1,s)))*R2D;
+}
+// Equatorward edge of the auroral oval (geomagnetic °) for a given Kp — ~2° per Kp step.
+function auroraBoundary(kp){ return 66.5 - 2.05*kp; }
+// The qualifying storm for tonight (or null): peak Kp during the dark window that both clears a
+// "worth telling you" floor AND reaches this user's magnetic latitude (with a horizon margin).
+const AURORA_KP_FLOOR=4;                                   // G0/active — below this it isn't news for most
+function auroraTonight(win){
+  if(!observer || !win) return null;
+  const kp=cachedKp(); if(!kp || !kp.length) return null;
+  const mlat=Math.abs(geomagLat(observer.lat, observer.lng));
+  let best=null;
+  for(const e of kp){
+    if(e.t < win.start-3*3600000 || e.t > win.end) continue;   // 3-hour slot overlapping tonight
+    if(e.kp < AURORA_KP_FLOOR) continue;
+    if(mlat < auroraBoundary(e.kp)-3) continue;                // won't reach this latitude even so
+    if(!best || e.kp>best.kp) best={ t:Math.max(e.t, win.start), kp:e.kp };
+  }
+  return best;
+}
+// One aurora heads-up per night, fired ~45 min before dusk (needs darkness anyway).
+function buildAuroraAlert(now, win){
+  if(prefs.notifyAurora===false || !win) return null;
+  const au=auroraTonight(win); if(!au) return null;
+  const fireT=Math.max(win.start-45*60000, now+60000);
+  if(fireT<=now+60000 || fireT>=win.end || inQuietHours(fireT)) return null;
+  const kpr=Math.round(au.kp*10)/10, dir=observer.lat>=0?'northern':'southern';
+  return { t:fireT, title:'🌌 Aurora watch · Kp '+kpr,
+    body:'A geomagnetic storm (Kp '+kpr+') could bring aurora to your latitude tonight — find a dark '+dir+' horizon away from city lights.',
+    tag:'aurora-'+dayStr(win.start), data:{type:'aurora'} };
+}
+function fireAuroraNotification(au){
+  const kpr=Math.round(au.kp*10)/10, dir=observer&&observer.lat>=0?'northern':'southern';
+  dispatchAlert(
+    { hue:'150,110,255', icon:'🌌', kicker:'Aurora watch · Kp '+kpr,
+      name:'Aurora could be visible tonight',
+      desc:'A geomagnetic storm may push the aurora to your latitude — find a dark '+dir+' horizon.',
+      onTap:()=>{ if(isMobile()) closeSheets(); } },
+    { title:'🌌 Aurora watch · Kp '+kpr,
+      opts:{ body:'A geomagnetic storm could bring aurora to your latitude tonight — find a dark '+dir+' horizon.',
+        tag:'aurora-'+dayStr(Date.now()), icon:'icon-192.png', badge:'icon-192.png', renotify:false, data:{type:'aurora'} } }
+  );
 }
 // One "tonight's sky" summary, fired ~45 min before dusk (or shortly if we're already near it).
 function buildDigestEntry(now, win, rows){
@@ -5210,7 +5282,8 @@ function syncAlertSchedule(force){
     if(!currentUser || !window.fb || !prefs.push){ resolve(false); return; }
     if(!force && Date.now()-schedLast < 30*60000){ resolve(false); return; }   // twice an hour is plenty
     clearTimeout(schedTimer);
-    schedTimer=setTimeout(()=>{
+    schedTimer=setTimeout(async ()=>{
+      if(prefs.notifyAurora!==false) await getKpForecast().catch(()=>{});   // warm the Kp forecast so the aurora entry can be built
       buildAlertSchedule(async list=>{
         schedLast=Date.now();
         try{
@@ -5252,6 +5325,16 @@ function scanAlerts(){
     if(tr && tr.start>now && tr.start-now<=ALERT_LEAD_MS && !inQuietHours(tr.start)){
       const key='train@'+Math.round(tr.start/60000);
       if(!notifiedKeys.has(key)){ fireTrainNotification(tr); notifiedKeys.add(key); saveNotified(); }
+    }
+  }
+  // Aurora watch — once a night, when a storm could reach this latitude and dusk is near.
+  if(prefs.notifyAurora!==false){
+    getKpForecast();                                       // warm the cache (cheap; refreshes twice/hour)
+    const win=tonightWindow(now);
+    if(win && now >= win.start-3*3600000 && !inQuietHours(now)){   // timely: within ~3h of dusk
+      const au=auroraTonight(win);
+      if(au){ const key='aurora@'+dayStr(now);
+        if(!notifiedKeys.has(key)){ fireAuroraNotification(au); notifiedKeys.add(key); saveNotified(); } }
     }
   }
   const objs=alertObjects(); if(!objs.length) return;
@@ -6226,11 +6309,14 @@ function renderLaunchDetail(l){
      (l.orbit?'<span class="d-badge">'+esc(l.orbit)+'</span>':'')+'</div>';
   h+='<div class="lc-count" id="lc-count">'+countdownStr(l.net)+'</div>';
   if(currentUser){ const e=seenEntry(l.id), c=e?(e.count||1):0;
+    const watched = webcastWatched(l.id);
     h+='<div class="lc-seen">'+
       '<button class="lc-seenbtn'+(e&&e.how==='overhead'?' on':'')+'" data-how="overhead">👁 Log overhead</button>'+
       '<button class="lc-seenbtn'+(e&&e.how==='person'?' on':'')+'" data-how="person">🧍 Log in person</button>'+
+      '<button class="lc-seenbtn'+(watched?' on':'')+'" data-webcast="1">📺 Watched the webcast</button>'+
     '</div>';
     if(c) h+='<div class="lc-seeninfo">Seen '+c+'× ('+(e.how==='person'?'in person':'overhead')+') · <span class="lc-rm">remove</span></div>';
+    else if(watched) h+='<div class="lc-seeninfo">📺 Webcast logged</div>';
   }
   const rows=[['Mission',l.mission],['Vehicle',l.rocket],['Provider',l.provider],
     ['When', l.net?fmtLaunchTime(l.net):'TBD'],['Status', l.status],['Pad', l.padName],['Site', l.locationName]];
@@ -7262,6 +7348,7 @@ function applyPrefs(){
   $('notify-groups').classList.toggle('show', prefs.notify);
   ['iss','stations','visual','rocket'].forEach(k=>{ const el=$('nt-'+k); if(el) el.classList.toggle('on', !!(prefs.notifyGroups&&prefs.notifyGroups[k])); });
   { const el=$('nt-train'); if(el) el.classList.toggle('on', prefs.notifyTrain!==false); }
+  { const el=$('nt-aurora'); if(el) el.classList.toggle('on', prefs.notifyAurora!==false); }
   if(typeof world!=='undefined' && world){
     applyAutoRotate();
     updateIssOrbit();
@@ -7330,6 +7417,9 @@ function initSettingsUI(){
   });
   { const sw=$('nt-train'); if(sw) (sw.closest('.stg')||sw).onclick=()=>{
       prefs.notifyTrain=!(prefs.notifyTrain!==false); sfxToggle(prefs.notifyTrain);
+      applyPrefs(); saveSettings(); scanAlerts(); if(prefs.push) syncAlertSchedule(true); }; }
+  { const sw=$('nt-aurora'); if(sw) (sw.closest('.stg')||sw).onclick=()=>{
+      prefs.notifyAurora=!(prefs.notifyAurora!==false); sfxToggle(prefs.notifyAurora);
       applyPrefs(); saveSettings(); scanAlerts(); if(prefs.push) syncAlertSchedule(true); }; }
   $('settingsbtn').onclick=(e)=>{ e.stopPropagation(); $('accountmenu').classList.remove('open'); toggleSheet('settings'); };
   const sb=$('sharebtn'); if(sb) sb.onclick=shareApp;
@@ -8113,6 +8203,7 @@ function admShowUser(){
       row('Push toggle', yn(pushToggle,'on','off'))+
       row('Background alerts', yn(s.notify!==false,'on','off'))+
       row('Train alerts', yn(s.notifyTrain!==false,'on','off'))+
+      row('Aurora alerts', yn(s.notifyAurora!==false,'on','off'))+
       row('Queued alerts', val(Array.isArray(s.alertSchedule)?s.alertSchedule.length:0))+
       row('Next alert', val(s.nextAlert?fmtSeen(s.nextAlert):'—'))+
       row('Listed in Community', yn(reg.listed!==false&&s.listed!==false,'yes','hidden'))+
@@ -8846,7 +8937,7 @@ function collectSettings(){
   let zoom=null; try{ zoom=world.pointOfView().altitude; }catch(e){}
   return { groups, lat: observer?observer.lat:null, lng: observer?observer.lng:null, zoom,
     units: prefs.units, time: prefs.time, autorotate: prefs.autorotate, issPath: prefs.issPath, cutoff: prefs.cutoff, music: prefs.music,
-    notify: prefs.notify, notifyGroups: prefs.notifyGroups, notifyTrain: prefs.notifyTrain, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
+    notify: prefs.notify, notifyGroups: prefs.notifyGroups, notifyTrain: prefs.notifyTrain, notifyAurora: prefs.notifyAurora, favs: prefs.favs, theme: prefs.theme, borders: prefs.borders, sounds: prefs.sounds, vibrate: prefs.vibrate, pushOn: prefs.push,   // NB: the boolean toggle is `pushOn`; `users/{uid}.push` is reserved for the subscription object (see savePushSubscription)
     shareFeed: prefs.shareFeed, shareLoc: prefs.shareLoc, locPrecise: prefs.locPrecise,
     listed: prefs.listed, ranked: prefs.ranked,
     alertMinEl: prefs.alertMinEl, quiet: prefs.quiet, quietFrom: prefs.quietFrom, quietTo: prefs.quietTo, digest: prefs.digest,
@@ -8900,6 +8991,7 @@ function applySettings(s){
     if(typeof s.notify==='boolean') prefs.notify=s.notify;
     if(s.notifyGroups && typeof s.notifyGroups==='object') prefs.notifyGroups=Object.assign({iss:true,stations:false,visual:false,rocket:true}, s.notifyGroups);
     if(typeof s.notifyTrain==='boolean') prefs.notifyTrain=s.notifyTrain;
+    if(typeof s.notifyAurora==='boolean') prefs.notifyAurora=s.notifyAurora;
     if(Array.isArray(s.favs)){ const merged=new Set([...favs, ...s.favs]); favs=merged; prefs.favs=[...merged];
       try{ localStorage.setItem('satmap_favs', JSON.stringify(prefs.favs)); }catch(e){} }
     applyPrefs();
@@ -9375,6 +9467,7 @@ const ACH=[
   /* --- Rockets --- */
   {id:'rocket',cat:'rockets', ic:'🚀', n:'Rocketeer',     d:'See a rocket launch',      p:15, t:s=>s.launches>=1},
   {id:'person',cat:'rockets', ic:'🎟️', n:'Front Row',     d:'See a launch in person',   p:25, t:s=>s.inperson>=1},
+  {id:'webcast',cat:'rockets', ic:'📺', n:'Launch Party',  d:'Watch 5 launch webcasts',  p:20, t:s=>s.webcast>=5, pr:s=>[s.webcast,5]},
   /* --- Explorer --- */
   {id:'idf10', cat:'tools', ic:'🔎', n:'Sky Detective',   d:'Run Identify 10 times',     p:20, t:s=>s.idf>=10, pr:s=>[s.idf,10]},
   {id:'uap1',  cat:'tools', ic:'👁️', n:'The Truth Is Out There', d:'File your first UAP report', p:15, t:s=>s.uap>=1},
@@ -9525,6 +9618,7 @@ function statsFromProfile(p){
     planned:x.planned||0, perfect:x.perfect||0, friends:(p&&p.friendCount)||0,
     witching, leap, blueMoon, meteor, hubble, vanguard, yuri, apollo, dirs:dirSet.size,
     orbSeen:[...orb], maxObj:maxName, dirSeen:[...dirSet], trainSeen:x.trainSeen||0, chat:x.chat||0,
+    webcast:(Array.isArray(x.webcastIds)?x.webcastIds.length:(x.webcast||0)),
     firstContact:(x.firstContact?1:0), originRead:(x.originRead?1:0),
     explored:(Array.isArray(x.explored)?x.explored.length:0),
     cosmicVisited:(Array.isArray(x.cosmosSeen)?x.cosmosSeen.length:0),
