@@ -3080,7 +3080,7 @@
 </script>
 
 <script>
-const BUILD = 'v243';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v244';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -4942,6 +4942,19 @@ function checkAskEnablePush(s){
     showPremiumCard({ hue:'90,209,255', icon:'🔔', kicker:'Turn on sky alerts',
       name:'Enable background alerts', desc:'Get a heads-up before the ISS, a Starlink train or a bright pass flies over — even with the app closed.',
       ms:15000, onTap:()=>{ enablePush(); } });
+  }catch(e){}
+}
+/* An admin flagged this user (users/{uid}.askInstall) to install the app. Show the install nudge
+   on their next sync/open — but only if they aren't already running it installed. One-shot. */
+function checkAskInstall(s){
+  try{
+    if(!s || !s.askInstall || !currentUser) return;
+    const seen=+(localStorage.getItem('skywatch_askinstall_seen')||0);
+    if(s.askInstall<=seen) return;
+    localStorage.setItem('skywatch_askinstall_seen', String(s.askInstall));
+    try{ if(window.fb){ const {db,doc,setDoc}=window.fb; setDoc(doc(db,'users',currentUser.uid), {askInstall:null}, {merge:true}); } }catch(e){}
+    if(isStandalone()) return;                              // already installed on this device — nothing to do
+    if(typeof showInstallNudge==='function') showInstallNudge();
   }catch(e){}
 }
 /* Gentle onboarding nudge for signed-in users who haven't claimed a username yet — shows the
@@ -7777,6 +7790,10 @@ function admShowUser(){
   const hasLoc = typeof p.lat==='number' && typeof p.lng==='number';
   const precise = s.locPrecise!==false;
   const onMap = adminPin.uid===admLookup.uid;
+  // Installed-app state comes from the presence beat (per-session). Older builds don't report it.
+  const knownDevice = ('standalone' in pres);
+  const installed = pres.standalone===true;
+  const platform = !knownDevice ? 'unknown' : (pres.ios?'iOS':(pres.mobile?'mobile web':'desktop'));
 
   // ---- 1) Identity header card — first, prominent ----
   const badges=(admLookup.isAdmin?'<span class="adm-ubadge admin">Admin</span>':'')+
@@ -7825,6 +7842,11 @@ function admShowUser(){
       (hasLoc?row('Precision', precise?val('precise'):val('approx (~city)','warn')):'')+
       (hasLoc?row('On map now', yn(onMap,'yes','no')):'')+
     '</div>'+
+    admSec('Device')+
+    '<div class="adm-card">'+
+      row('Installed as app', knownDevice?yn(installed,'yes','no'):val('unknown'))+
+      row('Platform', val(platform))+
+    '</div>'+
     admSec('Preferences')+
     '<div class="adm-card">'+
       row('Units', val(esc(s.units||'metric')))+
@@ -7860,6 +7882,7 @@ function admShowUser(){
       admBtn('u-ranktoggle', (reg.ranked===false||s.ranked===false)?'Add to leaderboard':'Remove from leaderboard')+
       admBtn('u-pushtest','Send test push')+
       admBtn('u-askpush','Ask user to enable push')+
+      (installed?'':admBtn('u-askinstall','Prompt to install app'))+
       admBtn('u-pushoff','Force push off')+
       admBtn('u-clearset','Clear synced settings')+
     '</div>'+
@@ -8278,6 +8301,13 @@ async function admAction(a){
       adminLog('ask-push', uid);
       showToast('They’ll be asked to turn on alerts next time they open SkyWatch', true); return;
     }
+    if(cmd==='u-askinstall'){
+      // The install prompt can only run on the user's own device — flag them; their client shows
+      // the install nudge on its next sync/open (unless they're already running it installed).
+      await setDoc(doc(db,'users',uid), {askInstall:Date.now()}, {merge:true});
+      adminLog('ask-install', uid);
+      showToast('They’ll be prompted to install the app next time they open it', true); return;
+    }
     if(cmd==='u-pushoff'){
       if(!confirm('Force background alerts off for @'+uname+'? Clears their push subscription — they can re-enable it themselves.')) return;
       await setDoc(doc(db,'users',uid), {push:null, pushOn:false, nextAlert:null}, {merge:true});
@@ -8588,6 +8618,7 @@ function applySettings(s){
     applyPrefs();
     reconcilePush();                    // re-subscribe this device if push is on but its subscription is missing
     checkAskEnablePush(s);              // an admin asked this user to turn on alerts — prompt them once
+    checkAskInstall(s);                 // an admin asked this user to install the app — prompt them once
     if(!pushPromptTried){ pushPromptTried=true; setTimeout(maybePromptPush, 4000); }   // once per session: nudge to grant permission if alerts are on but unpermitted
     if(prefs.borders) applyBorders();   // load + draw country borders if synced on
     if(prefs.notify) scanAlerts();
@@ -8958,7 +8989,8 @@ function startPresence(){
     // haven't picked a username yet; profiles are friends-only).
     const acctName=(myProfile&&myProfile.username)||currentUser.displayName||(currentUser.email||'').split('@')[0]||'';   // email sign-ups have no displayName → use the email handle
     window.fb.setDoc(window.fb.doc(window.fb.db,'presence',currentUser.uid),
-      { ts:now, name:acctName, photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'' }, {merge:true}).catch(()=>{}); };
+      { ts:now, name:acctName, photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'',
+        standalone:isStandalone(), ios:isIOS(), mobile:isMobileUA() }, {merge:true}).catch(()=>{}); };   // installed-app + platform signal for the admin console
   beat(); presenceTimer=setInterval(beat, 60000);
 }
 function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer=null; } }
