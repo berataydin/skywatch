@@ -1,5 +1,5 @@
 /* SkyWatch service worker — app-shell caching + offline fallback */
-const VERSION = 'skywatch-v244';
+const VERSION = 'skywatch-v245';
 const SHELL = [
   './',
   './index.html',
@@ -12,6 +12,11 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+// Dev panel "Apply pending update": take control immediately instead of waiting for all tabs to close.
+self.addEventListener('message', (e) => {
+  if (e.data === 'skipWaiting' || (e.data && e.data.type === 'skipWaiting')) self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {

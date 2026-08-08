@@ -2067,6 +2067,17 @@
   .dev-err b{display:block;font-size:11.5px;color:#ff9a86;font-weight:600;word-break:break-word}
   .dev-err span{display:block;font-size:10px;color:var(--muted);margin-top:3px;
     font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  .dev-err.has-more{cursor:pointer}
+  .dev-err.has-more:hover{border-color:rgba(255,90,77,.5)}
+  .dev-err-x{margin:7px 0 0;padding:7px 8px;border-radius:7px;background:rgba(0,0,0,.35);
+    font-size:10px;line-height:1.45;color:#e8b9ae;white-space:pre-wrap;word-break:break-word;overflow-x:auto;
+    font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  .dev-sec-row{display:flex;align-items:center;justify-content:space-between}
+  .dev-mini{background:rgba(255,90,77,.12);border:1px solid rgba(255,90,77,.35);color:#ff9a86;
+    font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;border-radius:7px;
+    padding:2px 9px;cursor:pointer;line-height:1.6}
+  .dev-mini:hover{background:rgba(255,90,77,.2)}
+  .dev-danger{color:var(--iss);border-bottom-color:rgba(255,90,77,.3)}
   .dev-empty{font-size:12px;color:var(--muted);padding:6px 0}
   .dev-bar{height:4px;border-radius:3px;background:rgba(120,160,255,.14);overflow:hidden;margin-top:3px}
   .dev-bar i{display:block;height:100%;background:rgb(var(--neon-c))}
@@ -2091,6 +2102,10 @@
   .fbm-filter button{font-size:11.5px;min-height:38px;padding:6px 4px}
   #adm-filter{grid-template-columns:repeat(4,1fr)}
   #adm-filter button{font-size:11px}
+  .adm-nav button{position:relative}
+  .adm-tabbadge{position:absolute;top:-5px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:9px;
+    background:var(--iss);color:#fff;font-size:10px;font-weight:800;line-height:16px;text-align:center;
+    box-shadow:0 0 8px rgba(255,90,77,.6)}
   .fbm-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
   .fbm-del{background:transparent;border:none;color:var(--iss);font-size:11px;font-weight:600;
     cursor:pointer;padding:3px 6px;border-radius:7px}
@@ -2707,8 +2722,12 @@
   <div class="stg-ver" id="stg-ver">—</div>
   </div><!-- /stg-pane-main -->
   <div id="stg-pane-dev"><div id="dev-body"></div>
-    <button id="dev-nuke" class="usr-btn danger">💣 Clear caches &amp; hard reload</button>
+    <div class="dev-sec">Actions</div>
+    <button id="dev-copy" class="usr-btn">📋 Copy diagnostics</button>
+    <button id="dev-update" class="usr-btn" style="display:none">⬆ Apply pending update</button>
     <button id="dev-off" class="idf-uap">Turn off developer mode</button>
+    <div class="dev-sec dev-danger">Danger zone</div>
+    <button id="dev-nuke" class="usr-btn danger">💣 Clear caches &amp; hard reload</button>
   </div>
   <div id="stg-pane-admin"><div id="adm-body"></div></div>
 </div>
@@ -3080,14 +3099,17 @@
 </script>
 
 <script>
-const BUILD = 'v244';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v245';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
    ReferenceError once took out the whole social layer; this makes that visible. */
 const devErrors=[];
+let lastPresenceAt=0;                 // set by the presence beat — powers the dev "last sync" row
+const devErrExpanded=new Set();       // error `at` timestamps currently expanded (survives the 1s re-render)
+let lastDevDiag='';                   // plain-text diagnostics snapshot for the Copy button
 function devLogError(kind, msg, extra){
-  devErrors.unshift({ kind, msg:String(msg||'').slice(0,300), extra:String(extra||'').slice(0,200), at:Date.now() });
+  devErrors.unshift({ kind, msg:String(msg||'').slice(0,300), extra:String(extra||'').slice(0,400), at:Date.now() });
   if(devErrors.length>60) devErrors.length=60;
   const b=document.getElementById('dev-badge');
   if(b) b.textContent=devErrors.length;
@@ -7330,7 +7352,23 @@ function initDevMode(){
     SFX.sad(); Haptics.bye();
   };
   const nuke=$('dev-nuke'); if(nuke) nuke.onclick=devNuke;
+  const cp=$('dev-copy'); if(cp) cp.onclick=async ()=>{
+    try{ await navigator.clipboard.writeText(lastDevDiag||('SkyWatch '+BUILD)); showToast('📋 Diagnostics copied', true); }
+    catch(e){ showErr('Copy failed — clipboard blocked'); } };
+  const up=$('dev-update'); if(up) up.onclick=devApplyUpdate;
   syncSettingsTabs();
+}
+/* Apply a service-worker update that's sitting in "waiting" without the nuclear cache wipe:
+   tell the waiting worker to skipWaiting, then reload once it takes control. */
+async function devApplyUpdate(){
+  try{
+    const reg=await navigator.serviceWorker.getRegistration();
+    if(reg && reg.waiting){
+      navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload(), {once:true});
+      reg.waiting.postMessage('skipWaiting');
+      showToast('Applying update…', true);
+    } else { location.reload(); }
+  }catch(e){ location.reload(); }
 }
 function startDevRefresh(){
   renderDev();
@@ -7376,17 +7414,37 @@ async function renderDev(){
   /* --- push --- */
   let pushSub=null; try{ pushSub=await pushSubscription(); }catch(e){}
   const perm=('Notification' in window) ? Notification.permission : 'unsupported';
+  const online=navigator.onLine;
+  const syncAge=lastPresenceAt?Math.round((Date.now()-lastPresenceAt)/1000):null;
+  const showCompass = isMobile() || cmpOn || cmpHeading!=null;
+  /* --- errors (expandable; stack hidden until tapped) --- */
+  const errHtml = devErrors.length
+    ? devErrors.slice(0,14).map(e=>{
+        const open=devErrExpanded.has(e.at);
+        return '<div class="dev-err'+(open?' open':'')+(e.extra?' has-more':'')+'" data-eat="'+e.at+'">'+
+          '<b>'+esc(e.msg)+'</b>'+
+          '<span>'+esc(e.kind)+' · '+new Date(e.at).toLocaleTimeString()+(e.extra?' · tap for stack':'')+'</span>'+
+          (open&&e.extra?('<pre class="dev-err-x">'+esc(e.extra)+'</pre>'):'')+'</div>';
+      }).join('')
+    : '<div class="dev-empty">Nothing has thrown. Suspicious, but good.</div>';
   /* --- compose --- */
   el.innerHTML=
-    '<div class="dev-sec">Build</div>'+
+    '<div class="dev-sec">Build &amp; connection</div>'+
     '<div class="dev-row dev-tap" id="dev-build"><span class="dev-k">App build</span>'+
       '<span class="dev-v ok">'+BUILD+'</span></div>'+
     devRow('Service worker', swState, swState==='active'?'ok':swState==='update waiting'?'warn':'bad')+
+    devRow('Network', online?'online':'offline', online?'ok':'bad')+
+    devRow('Last sync', syncAge==null?'—':(syncAge<90?'just now':syncAge<3600?(Math.round(syncAge/60)+'m ago'):(Math.round(syncAge/3600)+'h ago')),
+      syncAge==null?'warn':syncAge<180?'ok':'warn')+
     devRow('Caches', swCache)+
     devRow('Standalone', isStandalone()?'yes':'no')+
     devRow('Your UID', currentUser?currentUser.uid:'not signed in', currentUser?'ok':'warn')+
     devRow('Admin', isAdminUser?'yes':'no', isAdminUser?'ok':'')+
     devRow('User agent', navigator.userAgent.slice(0,60)+'…')+
+
+    '<div class="dev-sec dev-sec-row"><span>Errors · '+devErrors.length+'</span>'+
+      (devErrors.length?'<button class="dev-mini" id="dev-clearerr">Clear</button>':'')+'</div>'+
+    errHtml+
 
     '<div class="dev-sec">Render path</div>'+
     devRow('Satellites', usePoints?'GPU point cloud':'HTML markers', usePoints?'ok':'warn')+
@@ -7405,12 +7463,6 @@ async function renderDev(){
     devRow('Drawn', (satGeo&&isFinite(satGeo.drawRange.count))?satGeo.drawRange.count:'—')+
     devRow('Launches', (LAUNCHES||[]).length)+
 
-    '<div class="dev-sec">Compass</div>'+
-    devRow('Supported', (typeof DeviceOrientationEvent!=='undefined')?'yes':'no')+
-    devRow('Receiving', cmpOn?'yes':'no', cmpOn?'ok':'warn')+
-    devRow('Raw heading', cmpHeading==null?'—':cmpHeading.toFixed(1)+'°')+
-    devRow('Smoothed', cmpSmooth==null?'—':(azCompass(cmpSmooth)+' '+Math.round(cmpSmooth)+'°'))+
-
     '<div class="dev-sec">Push</div>'+
     devRow('Permission', perm, perm==='granted'?'ok':perm==='denied'?'bad':'warn')+
     devRow('Supported', pushSupported()?'yes':'no')+
@@ -7419,17 +7471,35 @@ async function renderDev(){
     devRow('Endpoint', pushSub?(pushSub.endpoint.slice(0,42)+'…'):'—')+
     devRow('Scheduled alerts', prefs.push?'see Firestore':'off')+
 
+    (showCompass?('<div class="dev-sec">Compass</div>'+
+      devRow('Supported', (typeof DeviceOrientationEvent!=='undefined')?'yes':'no')+
+      devRow('Receiving', cmpOn?'yes':'no', cmpOn?'ok':'warn')+
+      devRow('Raw heading', cmpHeading==null?'—':cmpHeading.toFixed(1)+'°')+
+      devRow('Smoothed', cmpSmooth==null?'—':(azCompass(cmpSmooth)+' '+Math.round(cmpSmooth)+'°'))):'')+
+
     '<div class="dev-sec">Storage · '+devBytes(total)+' of ~'+devBytes(QUOTA)+'</div>'+
     '<div class="dev-bar"><i style="width:'+Math.min(100,Math.round(total/QUOTA*100))+'%"></i></div>'+
-    rows.slice(0,8).map(r=>devRow(r[0].replace(/^skywatch_|^satmap_/,''), devBytes(r[1]))).join('')+
+    rows.slice(0,8).map(r=>devRow(r[0].replace(/^skywatch_|^satmap_/,''), devBytes(r[1]))).join('');
 
-    '<div class="dev-sec">Errors · '+devErrors.length+'</div>'+
-    (devErrors.length
-      ? devErrors.slice(0,12).map(e=>'<div class="dev-err"><b>'+esc(e.msg)+'</b>'+
-          '<span>'+e.kind+(e.extra?(' · '+esc(e.extra)):'')+' · '+
-          new Date(e.at).toLocaleTimeString()+'</span></div>').join('')
-      : '<div class="dev-empty">Nothing has thrown. Suspicious, but good.</div>');
+  // Plain-text snapshot for the Copy-diagnostics button.
+  lastDevDiag=[
+    'SkyWatch diagnostics · '+new Date().toISOString(),
+    'Build: '+BUILD+' · SW: '+swState+' · network: '+(online?'online':'offline')+' · standalone: '+isStandalone(),
+    'UID: '+(currentUser?currentUser.uid:'—')+' · admin: '+isAdminUser,
+    'Render: '+(usePoints?'GPU points':'HTML markers')+' · prop: '+(useWorker?'worker':'main')+' · THREE: '+((window.THREE&&window.THREE.REVISION)?('r'+window.THREE.REVISION):'absent'),
+    'FPS: '+(devPerf.fps||'—')+' · tick: '+(devPerf.tickMs?devPerf.tickMs.toFixed(1)+'ms':'—')+' · tracked: '+SATS.length+' · drawn: '+((satGeo&&isFinite(satGeo.drawRange.count))?satGeo.drawRange.count:'—'),
+    'Push: perm='+perm+' · supported='+pushSupported()+' · sub='+(pushSub?'active':'none')+' · key='+(VAPID_PUBLIC_KEY?'configured':'missing'),
+    'Storage: '+devBytes(total)+' of ~'+devBytes(QUOTA),
+    'UA: '+navigator.userAgent,
+    '', 'Errors ('+devErrors.length+'):',
+    ...(devErrors.length?devErrors.slice(0,20).map(e=>'· ['+new Date(e.at).toLocaleTimeString()+'] '+e.kind+': '+e.msg+(e.extra?(' | '+e.extra):'')):['(none)'])
+  ].join('\n');
+
   const bt=$('dev-build'); if(bt) bt.onclick=admTapBuild;
+  const ce=$('dev-clearerr'); if(ce) ce.onclick=(ev)=>{ ev.stopPropagation(); devErrors.length=0; devErrExpanded.clear(); const b=$('dev-badge'); if(b) b.textContent='0'; renderDev(); };
+  el.querySelectorAll('.dev-err.has-more').forEach(row=>row.onclick=()=>{
+    const at=+row.dataset.eat; if(devErrExpanded.has(at)) devErrExpanded.delete(at); else devErrExpanded.add(at); renderDev(); });
+  const up=$('dev-update'); if(up) up.style.display = (swState==='update waiting') ? 'block' : 'none';
   el.scrollTop=wasScroll;
 }
 /* ---------- Feedback (user side) ---------- */
@@ -7611,46 +7681,64 @@ async function loadConfig(){
 /* ============================================================
    Admin console
    ============================================================ */
-let admView='inbox', admFilter='open', admFeedback=[], admLookup=null, admStats=null, admFlags={}, admins=[];
+let admView='inbox', admFilter='open', admFeedback=[], admFeedbackTried=false, admLookup=null, admStats=null, admFlags={}, admins=[];
 function admSec(t){ return '<div class="dev-sec">'+t+'</div>'; }
 function admBtn(id,label,cls){ return '<button class="adm-btn'+(cls?(' '+cls):'')+'" data-a="'+id+'">'+label+'</button>'; }
 function renderAdmin(){
   const el=$('adm-body'); if(!el) return;
   if(!isAdminUser){ el.innerHTML='<div class="fr-note">Not an admin on this account.</div>'; return; }
+  // Lazy-load the feedback count once per console open so the Inbox tab can show an unread badge.
+  if(!admFeedbackTried){ admFeedbackTried=true; admLoadFeedback().then(f=>{ admFeedback=f; if($('adm-body')&&isAdminUser) renderAdmin(); }).catch(()=>{}); }
+  const newFb = admFeedback.filter(f=>(f.status||'new')==='new').length;
+  const tabs=[['inbox','📥 Inbox'],['users','👤 Users'],['stats','📊 Stats'],['messaging','📣 Messaging'],['config','⚙️ Config']];
   el.innerHTML=
-    '<div class="stg-sec">Admin notifications</div>'+
-    '<div class="stg"><div class="lbl">Notify me on new logins'+
-      '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
-      '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
-    '<div class="stg-sec">Maintenance</div>'+
-    '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
     '<div class="idf-chips adm-nav">'+
-      ['inbox','users','broadcast','flags','stats','admins','notify'].map(v=>
-        '<button data-v="'+v+'"'+(admView===v?' class="on"':'')+'>'+
-        ({inbox:'📥 Inbox',users:'👤 Users',broadcast:'📣 Broadcast',flags:'🚩 Flags',stats:'📊 Stats',admins:'🛡 Admins',notify:'🔔 Notifications'})[v]+
+      tabs.map(([v,label])=>
+        '<button data-v="'+v+'"'+(admView===v?' class="on"':'')+'>'+label+
+        ((v==='inbox'&&newFb)?('<span class="adm-tabbadge">'+newFb+'</span>'):'')+
         '</button>').join('')+
     '</div><div id="adm-pane"></div>';
-  const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
-  const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
   el.querySelectorAll('.adm-nav button').forEach(b=>b.onclick=()=>{ admView=b.dataset.v; renderAdmin(); });
   const pane=$('adm-pane');
   if(admView==='inbox') admRenderInbox(pane);
   else if(admView==='users') admRenderUsers(pane);
-  else if(admView==='broadcast') admRenderBroadcast(pane);
-  else if(admView==='flags') admRenderFlags(pane);
   else if(admView==='stats') admRenderStats(pane);
-  else if(admView==='notify') admRenderNotify(pane);
-  else admRenderAdmins(pane);
+  else if(admView==='messaging') admRenderMessaging(pane);
+  else admRenderConfig(pane);
 }
-/* Notifications tab — preview the gentle onboarding nudges without waiting for their triggers. */
-function admRenderNotify(pane){
+/* Messaging tab — everything that pushes something to users: the broadcast banner, the
+   new-login notification toggle, and on-demand previews of the onboarding nudges. */
+function admRenderMessaging(pane){
   const dismiss=()=>{ if(isMobile()) closeSheets(); else $('settings').classList.remove('open'); };
   pane.innerHTML=
-    '<div class="usr-note">Preview the gentle nudges shown to users. These bypass the normal timing/throttling so you can see them on demand.</div>'+
-    '<div class="usr-row" style="margin-top:10px"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
+    admSec('Broadcast')+
+    '<div id="adm-msg-bc"></div>'+
+    admSec('Admin notifications')+
+    '<div class="stg"><div class="lbl">Notify me on new logins'+
+      '<small>Pop-up while you&rsquo;re in the app &middot; push when you&rsquo;re away &middot; off by default</small></div>'+
+      '<div class="switch'+(FLAGS.notifyLogins===true?' on':'')+'" id="adm-loginnotify" role="switch"></div></div>'+
+    admSec('Preview user nudges')+
+    '<div class="usr-note">Bypass the normal timing/throttling to see a nudge on demand.</div>'+
+    '<div class="usr-row"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
     '<div class="usr-row"><button id="adm-testinstall" class="usr-btn">📲 Preview install nudge</button></div>';
+  admRenderBroadcast($('adm-msg-bc'));
+  const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   const tn=$('adm-testnudge'); if(tn) tn.onclick=()=>{ dismiss(); showUsernameNudge(); };
   const ti=$('adm-testinstall'); if(ti) ti.onclick=()=>{ dismiss(); showInstallNudge(); };
+}
+/* Config tab — global levers: score maintenance, feature kill-switches, and the admin roster. */
+function admRenderConfig(pane){
+  pane.innerHTML=
+    admSec('Maintenance')+
+    '<div class="usr-note">Heavy, global operation — recomputes every user&rsquo;s cached score. Use deliberately.</div>'+
+    '<div class="usr-row"><button id="adm-recompute" class="usr-btn">↻ Recompute all scores</button></div>'+
+    admSec('Feature flags')+
+    '<div id="adm-cfg-flags"></div>'+
+    admSec('Admins')+
+    '<div id="adm-admins"></div>';
+  const rc=$('adm-recompute'); if(rc) rc.onclick=e=>admRecomputeScores(e.currentTarget);
+  admRenderFlags($('adm-cfg-flags'));
+  admRenderAdmins($('adm-admins'));
 }
 /* ---- 1 + 2: feedback inbox, with the reporter's diagnostics attached ---- */
 async function admLoadFeedback(){
@@ -7949,6 +8037,7 @@ async function admRenderFlags(pane){
     }).join('');
   pane.querySelectorAll('[data-flag]').forEach(sw=>sw.onclick=async ()=>{
     const k=sw.dataset.flag, next=!(admFlags[k]!==false);
+    if(!next && !confirm('Disable “'+k+'” for everyone? This turns the feature off app-wide until you switch it back on.')) return;
     try{
       const {db, doc, setDoc}=window.fb;
       await setDoc(doc(db,'config','flags'), {[k]:next}, {merge:true});
@@ -8197,7 +8286,7 @@ async function admAddAdmin(){
     await setDoc(doc(db,'admins',uid), { username:u.data().username||raw, addedBy:currentUser.uid, at:Date.now() });
     adminLog('admin-add', uid, raw);
     showToast('🛡 @'+raw+' is now an admin', true);
-    admRenderAdmins($('adm-pane'));
+    admRenderAdmins($('adm-admins')||$('adm-pane'));
   }catch(e){ showErr('Could not add: '+(e.code||e.message)); }
 }
 /* ---- action router ---- */
@@ -8230,7 +8319,7 @@ async function admAction(a){
     if(cmd==='adm-del'){
       if(!confirm('Remove this admin?')) return;
       await deleteDoc(doc(db,'admins',arg));
-      adminLog('admin-remove', arg); admRenderAdmins($('adm-pane')); return;
+      adminLog('admin-remove', arg); admRenderAdmins($('adm-admins')||$('adm-pane')); return;
     }
     if(cmd==='bc-send'){
       const t=($('adm-bc-title').value||'').trim(), m=($('adm-bc-msg').value||'').trim();
@@ -8990,7 +9079,8 @@ function startPresence(){
     const acctName=(myProfile&&myProfile.username)||currentUser.displayName||(currentUser.email||'').split('@')[0]||'';   // email sign-ups have no displayName → use the email handle
     window.fb.setDoc(window.fb.doc(window.fb.db,'presence',currentUser.uid),
       { ts:now, name:acctName, photoURL:currentUser.photoURL||'', uname:(myProfile&&myProfile.username)||'',
-        standalone:isStandalone(), ios:isIOS(), mobile:isMobileUA() }, {merge:true}).catch(()=>{}); };   // installed-app + platform signal for the admin console
+        standalone:isStandalone(), ios:isIOS(), mobile:isMobileUA() }, {merge:true})
+      .then(()=>{ lastPresenceAt=Date.now(); }).catch(()=>{}); };   // installed-app + platform signal for the admin console; also powers dev "last sync"
   beat(); presenceTimer=setInterval(beat, 60000);
 }
 function stopPresence(){ if(presenceTimer){ clearInterval(presenceTimer); presenceTimer=null; } }
