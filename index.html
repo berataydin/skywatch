@@ -1819,6 +1819,10 @@
   .frpin.me .frpin-body{border-color:rgba(90,209,255,.95);
     box-shadow:0 0 14px rgba(90,209,255,.6),0 3px 8px rgba(0,0,0,.6)}
   .frpin.me .frpin-tail{border-top-color:rgba(90,209,255,.95)}
+  .frpin.admin .frpin-body{border-color:rgba(255,211,77,.95);
+    box-shadow:0 0 16px rgba(255,211,77,.65),0 3px 8px rgba(0,0,0,.6)}
+  .frpin.admin .frpin-tail{border-top-color:rgba(255,211,77,.95)}
+  .frpin.admin .frpin-name{border-color:rgba(255,211,77,.5);color:#ffe9a8}
   .frpin-body img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
   .frpin.on .frpin-tail{border-top-color:rgba(87,224,138,.95)}
   .frpin-name{position:absolute;left:50%;top:-58px;transform:translateX(-50%);white-space:nowrap;
@@ -3076,7 +3080,7 @@
 </script>
 
 <script>
-const BUILD = 'v241';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v243';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -3713,6 +3717,16 @@ function initGlobe(){
         el.onclick=(ev)=>{ ev.stopPropagation(); flyTo(d.lat, d.lng, 1.5, 900); };
         return el;
       }
+      if(d._admin){                                    // admin-console: the user being inspected
+        const el=document.createElement('div');
+        el.className='frpin admin';
+        el.innerHTML='<span class="frpin-body">'+(d.photo?('<img src="'+esc(d.photo)+'" referrerpolicy="no-referrer">'):d.icon)+'</span>'+
+                     '<span class="frpin-tail"></span>'+
+                     '<span class="frpin-name">'+esc(d.username)+'</span>';
+        el.title=d.username+' · shared location'+(d.precise===false?' (approx.)':'');
+        el.onclick=(ev)=>{ ev.stopPropagation(); flyTo(d.lat, d.lng, 1.5, 900); };
+        return el;
+      }
       if(d._launch){                                   // launch-pad pin
         const el=document.createElement('div');
         el.className='launchpin';
@@ -4137,6 +4151,7 @@ function renderFrame(){
   const extra = pinsOk ? launchPins.filter(p=>p.lat!=null) : [];
   if(pinnedFriends.size || friends.some(f=>f._showUntil)) extra.push(...friendPinData());
   const mp=mePinData(); if(mp) extra.push(mp);
+  if(adminPin.lat!=null) extra.push(adminPin);          // admin-console: user under inspection
   if(selected && selected.lat!=null){
     selMarker.lat=selected.lat; selMarker.lng=selected.lng; selMarker.alt=selected.alt; extra.push(selMarker);
   }
@@ -4909,6 +4924,24 @@ function maybePromptPush(){
     showPremiumCard({ hue:'90,209,255', icon:'🔔', kicker:'Never miss a pass',
       name:'Tap to turn on sky alerts', desc:'A heads-up before the ISS, a Starlink train or a bright pass flies over.',
       ms:12000, onTap:()=>{ enablePush(); } });
+  }catch(e){}
+}
+/* An admin flagged this user (users/{uid}.askEnablePush) to turn on background alerts. A push
+   subscription can only be created on the user's own device after they grant permission, so the
+   server can't do it for them — this shows a one-tap card that runs enablePush() here. One-shot:
+   we clear the server flag and remember the timestamp locally so it never re-nags. */
+function checkAskEnablePush(s){
+  try{
+    if(!s || !s.askEnablePush || !currentUser) return;
+    const seen=+(localStorage.getItem('skywatch_askpush_seen')||0);
+    if(s.askEnablePush<=seen) return;                       // already handled this request
+    localStorage.setItem('skywatch_askpush_seen', String(s.askEnablePush));
+    try{ if(window.fb){ const {db,doc,setDoc}=window.fb; setDoc(doc(db,'users',currentUser.uid), {askEnablePush:null}, {merge:true}); } }catch(e){}
+    if(!pushSupported() || iosNeedsInstall()) return;       // can't enable on this device anyway
+    if('Notification' in window && Notification.permission==='granted'){ reconcilePush(); return; }  // already allowed — re-subscribe silently, no card
+    showPremiumCard({ hue:'90,209,255', icon:'🔔', kicker:'Turn on sky alerts',
+      name:'Enable background alerts', desc:'Get a heads-up before the ISS, a Starlink train or a bright pass flies over — even with the app closed.',
+      ms:15000, onTap:()=>{ enablePush(); } });
   }catch(e){}
 }
 /* Gentle onboarding nudge for signed-in users who haven't claimed a username yet — shows the
@@ -7719,6 +7752,7 @@ async function admOpenUser(uid){
     try{ const ps=await getDoc(doc(db,'presence',uid)); if(ps.exists()) presence=ps.data(); }catch(e){}
     admLookup={ uid, uname: uname || prof.displayName || 'unnamed', reg, profile:prof, settings, presence,
       isAdmin: ADMIN_BOOTSTRAP.includes(uid) || adminExtra.has(uid), noUsername:!uname };
+    if(adminPin.uid && adminPin.uid!==uid) clearUserOnMap();   // drop a previous user's map pin
     admShowUser();
     box.scrollIntoView({behavior:'smooth', block:'nearest'});
   }catch(e){ if(box) box.innerHTML='<div class="fr-note">Couldn’t open: '+esc(e.code||e.message||e)+'</div>'; }
@@ -7739,6 +7773,10 @@ function admShowUser(){
   const row=(k,v)=>'<div class="dev-row"><span class="dev-k">'+k+'</span>'+v+'</div>';
   const val=(v,cls)=>'<span class="dev-v'+(cls?(' '+cls):'')+'">'+v+'</span>';
   const memberSince = reg.created||p.created||p.since||0;
+  // Shared location lives on the profile doc (fuzzed unless locPrecise). Admins can read it.
+  const hasLoc = typeof p.lat==='number' && typeof p.lng==='number';
+  const precise = s.locPrecise!==false;
+  const onMap = adminPin.uid===admLookup.uid;
 
   // ---- 1) Identity header card — first, prominent ----
   const badges=(admLookup.isAdmin?'<span class="adm-ubadge admin">Admin</span>':'')+
@@ -7778,9 +7816,25 @@ function admShowUser(){
       row('Next alert', val(s.nextAlert?fmtSeen(s.nextAlert):'—'))+
       row('Listed in Community', yn(reg.listed!==false&&s.listed!==false,'yes','hidden'))+
       row('On leaderboard', yn(reg.ranked!==false&&s.ranked!==false,'yes','no'))+
-      row('Shares location', yn(s.shareLoc!==false,'yes','no'))+
-      row('Theme', val(esc(s.theme||'default')))+
       row('Blocked', reg.blocked?val('yes','bad'):val('no','ok'))+
+    '</div>'+
+    admSec('Location')+
+    '<div class="adm-card">'+
+      row('Shares location', yn(s.shareLoc!==false,'yes','no'))+
+      row('Coordinates', hasLoc?val(p.lat.toFixed(precise?4:2)+', '+p.lng.toFixed(precise?4:2)):val('not shared'))+
+      (hasLoc?row('Precision', precise?val('precise'):val('approx (~city)','warn')):'')+
+      (hasLoc?row('On map now', yn(onMap,'yes','no')):'')+
+    '</div>'+
+    admSec('Preferences')+
+    '<div class="adm-card">'+
+      row('Units', val(esc(s.units||'metric')))+
+      row('Time format', val(s.time==='12'?'12-hour':'24-hour'))+
+      row('Theme', val(esc(s.theme||'default')))+
+      row('Quiet hours', s.quiet?val((s.quietFrom!=null?s.quietFrom+':00':'?')+'–'+(s.quietTo!=null?s.quietTo+':00':'?')):val('off'))+
+      row('Min alert elevation', val((typeof s.alertMinEl==='number'?s.alertMinEl:10)+'°'))+
+      row('Favorites', val(Array.isArray(s.favs)?s.favs.length:0))+
+      row('Awards granted / revoked', val((Array.isArray(p.granted)?p.granted.length:0)+' / '+(Array.isArray(p.revoked)?p.revoked.length:0)))+
+      row('Settings last synced', val(s.updatedAt?fmtSeen(s.updatedAt):'—'))+
     '</div>';
 
   // ---- 3) Options ----
@@ -7794,11 +7848,18 @@ function admShowUser(){
       admBtn('u-recompute','Recompute score')+
       admBtn('u-resetcel','Reset unlock history')+
     '</div>'+
+    (hasLoc?(admSec('Location')+
+    '<div class="adm-acts">'+
+      (onMap?admBtn('u-mapoff','📍 Hide from map'):admBtn('u-map','📍 Show on map'))+
+      admBtn('u-copyloc','Copy coordinates')+
+      admBtn('u-clearloc','Clear shared location','danger')+
+    '</div>'):'')+
     admSec('Account')+
     '<div class="adm-acts">'+
       admBtn('u-listtoggle', (reg.listed===false||s.listed===false)?'Show in Community':'Hide from Community')+
       admBtn('u-ranktoggle', (reg.ranked===false||s.ranked===false)?'Add to leaderboard':'Remove from leaderboard')+
       admBtn('u-pushtest','Send test push')+
+      admBtn('u-askpush','Ask user to enable push')+
       admBtn('u-pushoff','Force push off')+
       admBtn('u-clearset','Clear synced settings')+
     '</div>'+
@@ -8210,6 +8271,13 @@ async function admAction(a){
       adminLog('recompute', uid); showToast('✓ Score recomputed ('+pub.score+' pts)', true);
       admShowUser(); return;
     }
+    if(cmd==='u-askpush'){
+      // A subscription can only be created on the user's own device after they grant permission —
+      // so flag them; their client shows a one-tap "enable alerts" card on its next sync/open.
+      await setDoc(doc(db,'users',uid), {askEnablePush:Date.now()}, {merge:true});
+      adminLog('ask-push', uid);
+      showToast('They’ll be asked to turn on alerts next time they open SkyWatch', true); return;
+    }
     if(cmd==='u-pushoff'){
       if(!confirm('Force background alerts off for @'+uname+'? Clears their push subscription — they can re-enable it themselves.')) return;
       await setDoc(doc(db,'users',uid), {push:null, pushOn:false, nextAlert:null}, {merge:true});
@@ -8229,6 +8297,31 @@ async function admAction(a){
       admLookup.settings=Object.assign({}, s, {[key]:next});
       adminLog(cmd, uid, key+'='+next);
       showToast((key==='listed'?'Community listing ':'Leaderboard ')+(next?'on':'off'), true);
+      admShowUser(); return;
+    }
+    if(cmd==='u-map'){
+      const prof=admLookup.profile||{};
+      if(typeof prof.lat!=='number' || typeof prof.lng!=='number'){ showErr('This user hasn’t shared a location.'); return; }
+      showUserOnMap({ uid, lat:prof.lat, lng:prof.lng,
+        username:(admLookup.noUsername?(admLookup.uname||'user'):('@'+admLookup.uname)),
+        photo:prof.photoURL||'', precise:(admLookup.settings||{}).locPrecise!==false });
+      adminLog('view-loc', uid);
+      showToast('📍 Pinned on the globe — behind this panel', true);
+      admShowUser(); return;
+    }
+    if(cmd==='u-mapoff'){ clearUserOnMap(); showToast('Removed from map', true); admShowUser(); return; }
+    if(cmd==='u-copyloc'){
+      const prof=admLookup.profile||{};
+      if(typeof prof.lat!=='number'){ showErr('No shared location.'); return; }
+      try{ await navigator.clipboard.writeText(prof.lat+', '+prof.lng); showToast('Coordinates copied', true); }catch(e){ showErr('Copy failed'); }
+      return;
+    }
+    if(cmd==='u-clearloc'){
+      if(!confirm('Clear @'+uname+'’s shared location? It removes their pin for everyone until they share again.')) return;
+      await setDoc(doc(db,'profiles',uid), {lat:null, lng:null, updatedAt:Date.now()}, {merge:true});
+      admLookup.profile=Object.assign({}, admLookup.profile||{}, {lat:null, lng:null});
+      if(adminPin.uid===uid) clearUserOnMap();
+      adminLog('clear-loc', uid); showToast('Location cleared', true);
       admShowUser(); return;
     }
     if(cmd==='u-block'){
@@ -8494,6 +8587,7 @@ function applySettings(s){
       try{ localStorage.setItem('satmap_favs', JSON.stringify(prefs.favs)); }catch(e){} }
     applyPrefs();
     reconcilePush();                    // re-subscribe this device if push is on but its subscription is missing
+    checkAskEnablePush(s);              // an admin asked this user to turn on alerts — prompt them once
     if(!pushPromptTried){ pushPromptTried=true; setTimeout(maybePromptPush, 4000); }   // once per session: nudge to grant permission if alerts are on but unpermitted
     if(prefs.borders) applyBorders();   // load + draw country borders if synced on
     if(prefs.notify) scanAlerts();
@@ -11374,6 +11468,15 @@ const PIN_SHOW_MS = 9000;   // how long a friend's pin flashes on the map after 
    element on every propagation tick. */
 const pinCache=new Map();
 const mePin={ _me:true, lat:0, lng:0, alt:0.01, icon:'' };
+// Admin-console pin: the user currently being inspected, shown on the globe over the record.
+const adminPin={ _admin:true, uid:null, lat:null, lng:null, alt:0.012, username:'', icon:'👤', photo:'', precise:true };
+function showUserOnMap(o){
+  adminPin.uid=o.uid; adminPin.lat=o.lat; adminPin.lng=o.lng; adminPin.username=o.username||'user';
+  adminPin.photo=o.photo||''; adminPin.icon=o.icon||'👤'; adminPin.precise=o.precise!==false;
+  if(world) flyTo(o.lat, o.lng, 1.5, 900);
+  renderFrame();
+}
+function clearUserOnMap(){ adminPin.uid=null; adminPin.lat=null; adminPin.lng=null; renderFrame(); }
 function friendPinData(){
   const now=Date.now();
   const out=[];
