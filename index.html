@@ -1541,6 +1541,48 @@
     background:radial-gradient(120% 90% at 50% 0%,rgba(24,44,84,.96),rgba(3,6,15,.99) 70%);
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
   #onboard.show{display:flex}
+  /* Twinkling starfield behind the tour (two parallax layers) */
+  #onboard::before,#onboard::after{content:'';position:absolute;inset:0;pointer-events:none}
+  #onboard::before{opacity:.55;animation:obTwinkle 4.5s ease-in-out infinite;
+    background:
+      radial-gradient(1px 1px at 18% 28%, rgba(255,255,255,.9), transparent),
+      radial-gradient(1px 1px at 72% 62%, rgba(255,255,255,.7), transparent),
+      radial-gradient(1.6px 1.6px at 41% 78%, rgba(180,220,255,.8), transparent),
+      radial-gradient(1px 1px at 86% 21%, rgba(255,255,255,.7), transparent),
+      radial-gradient(1px 1px at 55% 14%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1.5px 1.5px at 9% 66%, rgba(200,225,255,.7), transparent),
+      radial-gradient(1px 1px at 91% 84%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1px 1px at 33% 47%, rgba(255,255,255,.5), transparent)}
+  #onboard::after{opacity:.4;animation:obDrift 90s linear infinite;
+    background:
+      radial-gradient(1px 1px at 12% 82%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1px 1px at 63% 33%, rgba(190,220,255,.6), transparent),
+      radial-gradient(1.4px 1.4px at 78% 88%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1px 1px at 47% 6%, rgba(255,255,255,.5), transparent),
+      radial-gradient(1px 1px at 27% 58%, rgba(255,255,255,.45), transparent)}
+  @keyframes obTwinkle{0%,100%{opacity:.32}50%{opacity:.68}}
+  @keyframes obDrift{from{transform:translateY(0)}to{transform:translateY(-40px)}}
+  #ob-prog{position:absolute;top:0;left:0;right:0;height:3px;z-index:4;background:rgba(120,160,255,.14)}
+  #ob-prog i{display:block;height:100%;width:10%;border-radius:0 3px 3px 0;
+    background:linear-gradient(90deg,#5ad1ff,#9b8cff);box-shadow:0 0 12px rgba(90,209,255,.7);
+    transition:width .4s cubic-bezier(.22,.9,.3,1)}
+  /* Content entrance (transform-only → no flash while swiping) + floating icon */
+  .ob-slide.active .ob-icon{animation:obFloat 4s .55s ease-in-out infinite}
+  .ob-slide.active .ob-ico-in{display:inline-block;animation:obIconPop .6s cubic-bezier(.2,1.35,.4,1) both}
+  .ob-slide.active h3{animation:obSettle .5s .10s both}
+  .ob-slide.active p{animation:obSettle .5s .18s both}
+  .ob-slide.active .ob-tips li{animation:obSettle .5s both}
+  .ob-slide.active .ob-tips li:nth-child(1){animation-delay:.24s}
+  .ob-slide.active .ob-tips li:nth-child(2){animation-delay:.30s}
+  .ob-slide.active .ob-tips li:nth-child(3){animation-delay:.36s}
+  .ob-slide.active .ob-actbtn{animation:obSettle .5s .42s both}
+  @keyframes obSettle{from{transform:translateY(15px)}to{transform:translateY(0)}}
+  @keyframes obIconPop{0%{transform:scale(.55)}62%{transform:scale(1.14)}100%{transform:scale(1)}}
+  @keyframes obFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  @media (prefers-reduced-motion: reduce){
+    #onboard::before,#onboard::after,.ob-slide.active .ob-icon,.ob-slide.active .ob-ico-in,
+    .ob-slide.active h3,.ob-slide.active p,.ob-slide.active .ob-tips li,.ob-slide.active .ob-actbtn{animation:none}
+  }
   #ob-skip{position:absolute;top:calc(env(safe-area-inset-top) + 14px);right:16px;z-index:3;
     border:1px solid var(--border);background:rgba(120,160,255,.08);color:var(--muted);
     border-radius:20px;padding:8px 16px;font-size:12.5px;font-weight:600;cursor:pointer}
@@ -1577,7 +1619,8 @@
     border-radius:14px;padding:15px;font-size:14.5px;font-weight:700;cursor:pointer;min-height:52px}
   #ob-back{flex:0 0 34%;color:var(--muted)}
   #ob-back[hidden]{display:none}
-  #ob-next{background:rgba(90,209,255,.18);border-color:rgba(90,209,255,.5);color:var(--accent)}
+  #ob-next{background:rgba(90,209,255,.18);border-color:rgba(90,209,255,.5);color:var(--accent);
+    box-shadow:0 0 0 1px rgba(90,209,255,.18),0 6px 20px rgba(90,209,255,.18)}
   .ob-btns button:hover{border-color:var(--accent)}
   .ob-btns button:active{transform:scale(.985)}
   @media (max-height:620px){
@@ -2387,6 +2430,7 @@
 </div>
 
 <div id="onboard">
+  <div id="ob-prog"><i></i></div>
   <button id="ob-skip">Skip</button>
   <div id="ob-view"><div id="ob-track"></div></div>
   <div id="ob-foot">
@@ -3159,7 +3203,7 @@
 </script>
 
 <script>
-const BUILD = 'v253';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v254';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -6624,51 +6668,61 @@ function initLightbox(){
 /* ---------- First-run onboarding tour ---------- */
 const OB_STEPS=[
   {i:'🛰️',t:'Welcome to SkyWatch',
-   x:'Thousands of satellites and upcoming rocket launches, tracked live on a 3D globe.',
-   tips:[['🖐','<b>Drag</b> to spin the Earth, pinch or scroll to zoom.'],
-         ['🔴','The <b>ISS</b> is the red dot, with its orbit drawn ahead of it.'],
-         ['🌗','A shaded terminator shows where night has fallen right now.']]},
+   x:'Every satellite and upcoming rocket launch, tracked live on a 3D globe — and a whole sky to go out and see for yourself.',
+   tips:[['🖐','<b>Drag</b> to spin the Earth; pinch or scroll to zoom — pull right back to reveal the Sun, Moon and planets.'],
+         ['🔴','The <b>ISS</b> is the red dot, its orbit drawn ahead of it.'],
+         ['🌗','A live terminator shows where night has just fallen.']]},
   {i:'📍',t:'Start with your location',
-   x:'Everything good here depends on it — what’s overhead, pass alerts, the sky finder and CE5 sessions.',
-   tips:[['⌖','Tap the <b>⌖ button</b> anytime to re-centre on yourself.'],
-         ['🏠','Wi-Fi fixes can be tens of miles off — <b>long-press ⌖</b> to enter a postal code instead.']],
+   x:'Everything good here depends on it — what’s overhead, pass alerts, the AR sky finder, aurora and CE5.',
+   tips:[['⌖','Tap <b>⌖</b> anytime to re-centre on yourself.'],
+         ['🏠','Wi-Fi fixes can be miles off — <b>long-press ⌖</b> to type a postal code instead.']],
    act:'📍 Use my location', run:()=>requestLocation(),
    alt:'Enter a postal code instead', altRun:()=>openLocPicker()},
+  {i:'🔭',t:'Point your phone at the sky',
+   x:'Hold your phone up and SkyWatch overlays every satellite in its real position — labelled, in AR, over the live camera.',
+   tips:[['🛰️','The whole sky fills in — the ISS, bright passes, the Moon and Sun, all exactly where they are.'],
+         ['📳','It <b>buzzes</b> as objects pass through the reticle — like a metal detector for the sky.'],
+         ['🎯','Chasing one thing? Follow the arrows until it locks green, then log it on the spot.']]},
+  {i:'🌌',t:'Is it worth going out?',
+   x:'The Tonight screen scores every pass 0–100 by fusing brightness, sky darkness, the Moon and the cloud forecast at pass time.',
+   tips:[['⭐','A headline verdict answers at a glance — <b>tap it</b> to see exactly what went into the score.'],
+         ['🌠','<b>Aurora watch</b> pings you when a geomagnetic storm could reach your latitude.'],
+         ['🔕','Staying in? One tap on “<b>Not watching tonight</b>” mutes alerts till morning.']]},
   {i:'📡',t:'See what’s above you',
-   x:'The Sky tab lists everything over your horizon right now, brightest and highest first.',
+   x:'The Sky tab lists everything over your horizon right now — brightest and highest first.',
    tips:[['👆','<b>Tap any dot</b> to zoom in, highlight it and open its card.'],
-         ['📄','Cards carry orbit type, launch date, operator, photos and live position.'],
-         ['🧭','Tap <b>Find in sky (AR)</b> and follow the guide until the target turns green.']]},
-  {i:'🎚️',t:'Filter and search',
-   x:'Layers controls what’s drawn on the globe — and the filters take effect the moment you tap.',
-   tips:[['🛰️','Toggle groups, or filter by orbit — <b>LEO / MEO / GEO</b>.'],
-         ['★','Narrow to <b>favourites</b> or things you’ve already <b>👁 seen</b>.'],
-         ['🚀','The <b>Launches</b> layer pins upcoming rockets on their real pads, with countdowns and alerts.']]},
+         ['🎚️','<b>Layers</b> controls what’s drawn — groups, orbit bands (LEO/MEO/GEO), favourites or things you’ve seen.'],
+         ['📄','Cards carry orbit type, operator, photos and live position.']]},
   {i:'🔎',t:'Identify what you saw',
-   x:'Saw something odd? SkyWatch rewinds the sky to that exact moment and tells you what was actually there.',
-   tips:[['🕐','Pick the <b>time</b>, the direction you looked and how high it was.'],
-         ['🔗','It flags <b>Starlink trains</b> — the usual culprit behind “UFO fleet” reports.'],
-         ['👁','Nothing matches? File a <b>UAP report</b> with shape, motion and duration — your ruled-out candidates attach automatically.']]},
+   x:'Saw something odd? SkyWatch rewinds the sky to that exact moment and tells you what was really there.',
+   tips:[['🕐','Pick the <b>time</b>, the way you looked and how high it was — the matches are tappable.'],
+         ['🔗','It flags <b>Starlink trains</b> — the usual culprit behind “UFO fleet” sightings.'],
+         ['👁','No match? File a <b>UAP report</b>; your ruled-out candidates attach automatically.']]},
   {i:'🧘',t:'CE5 sessions',
    x:'A guided quiet-observation session for serious sky-watching, with the timekeeping handled for you.',
-   tips:[['🌙','A conditions check reads <b>darkness, Moon and cloud</b> before you commit.'],
-         ['🔴','<b>Red night mode</b> protects your dark adaptation the whole way through.'],
-         ['✅','Mark anything you see — afterwards it <b>cross-references</b> every object that crossed your sky.']]},
+   tips:[['🌙','A conditions check reads <b>darkness, Moon and cloud</b> before you begin.'],
+         ['🔴','<b>Red night mode</b> protects your dark adaptation throughout.'],
+         ['✅','Mark anything you see — it then <b>cross-references</b> every object that crossed your sky.']]},
+  {i:'🚀',t:'Follow a launch',
+   x:'The Launches layer pins upcoming rockets on their real pads, with live countdowns and depth on every mission.',
+   tips:[['🔭','“<b>Visible from you?</b>” weighs distance and twilight to say whether you’ll catch the ascent.'],
+         ['⭐','<b>Follow</b> a launch for countdown alerts (T‑60, T‑10, liftoff) and a live countdown pinned to your notifications.'],
+         ['🪂','Spot booster-landing attempts, and log “<b>Watched the webcast</b>” toward the Launch Party award.']]},
   {i:'🏅',t:'Log it, earn it, share it',
-   x:'Every sighting you log builds a permanent record — and a bit of friendly competition.',
-   tips:[['👁','<b>Log a sighting</b> with the real date and time you saw it.'],
-         ['🏆','Earn <b>badges, streaks and awards</b>, and climb the podium.'],
+   x:'Every sighting builds a permanent record — and a bit of friendly competition.',
+   tips:[['👁','<b>Log</b> a sighting with the real date and time you saw it.'],
+         ['🏆','Earn <b>badges, streaks and awards</b>, and climb the leaderboard.'],
          ['👥','Add friends, <b>ping them to look up</b>, and watch sightings land live in the Feed.']]},
   {i:'⚙️',t:'Make it yours',
    x:'Sign in and your location, filters and history follow you to every device.',
-   tips:[['🌍','Globe textures, country borders and names, units.'],
-         ['🔔','Pass alerts, launch alerts and interface sounds.'],
-         ['👤','The <b>User</b> panel holds your username, profile icon and account controls.']]}
+   tips:[['🔔','Alerts for passes, Starlink trains, launches and aurora — every one tunable.'],
+         ['📲','<b>Install</b> SkyWatch to your home screen for full-screen and background alerts.'],
+         ['👤','The <b>User</b> panel holds your username, profile icon and account.']]}
 ];
 let obStep=0, obDrag=null;
 function obSlideHTML(s, i){
   return '<div class="ob-slide" data-i="'+i+'"><div class="ob-inner">'+
-    '<div class="ob-icon">'+s.i+'</div><h3>'+esc(s.t)+'</h3><p>'+esc(s.x)+'</p>'+
+    '<div class="ob-icon"><span class="ob-ico-in">'+s.i+'</span></div><h3>'+esc(s.t)+'</h3><p>'+esc(s.x)+'</p>'+
     (s.tips?('<ul class="ob-tips">'+s.tips.map(t=>
       '<li><span class="ob-em">'+t[0]+'</span><span>'+t[1]+'</span></li>').join('')+'</ul>'):'')+
     (s.act?'<button class="ob-actbtn">'+esc(s.act)+'</button>':'')+
@@ -6681,9 +6735,9 @@ function buildOnboard(){
   tr.querySelectorAll('.ob-slide').forEach((sl,i)=>{
     const s=OB_STEPS[i];
     const a=sl.querySelector('.ob-actbtn');
-    if(a) a.onclick=()=>{ if(s.run) s.run(); a.textContent='✓ Locating…'; };
+    if(a) a.onclick=()=>{ SFX.select(); Haptics.select(); if(s.run) s.run(); a.textContent='✓ Locating…'; };
     const al=sl.querySelector('.ob-alt');
-    if(al) al.onclick=()=>{ if(s.altRun) s.altRun(); };
+    if(al) al.onclick=()=>{ SFX.tap(); Haptics.tap(); if(s.altRun) s.altRun(); };
   });
   $('ob-dots').innerHTML=OB_STEPS.map((_,i)=>'<button class="ob-dot" data-i="'+i+'" aria-label="Step '+(i+1)+'"></button>').join('');
   $('ob-dots').querySelectorAll('.ob-dot').forEach(d=>d.onclick=()=>obGo(+d.dataset.i));
@@ -6694,20 +6748,27 @@ function obPos(px, animate){
   tr.style.transform = 'translate3d('+px+'px,0,0)';
 }
 function obGo(i, silent){
-  const n=OB_STEPS.length;
+  const n=OB_STEPS.length, prev=obStep;
   obStep=Math.max(0, Math.min(n-1, i));
   obPos(-obStep*($('ob-view').clientWidth||innerWidth), true);
   $('ob-dots').querySelectorAll('.ob-dot').forEach((d,k)=>d.classList.toggle('on', k===obStep));
   $('ob-back').hidden = obStep===0;
-  $('ob-next').textContent = obStep===n-1 ? 'Start exploring' : 'Next';
-  // The "use my location" CTA is pointless once a location exists.
-  $('ob-track').querySelectorAll('.ob-slide').forEach(sl=>{
+  $('ob-next').textContent = obStep===n-1 ? '✨ Start exploring' : 'Next';
+  const bar=$('ob-prog'); if(bar && bar.firstChild) bar.firstChild.style.width=((obStep+1)/n*100)+'%';
+  // Re-trigger the entrance animation on the slide we're landing on (transform-only → no flash).
+  const slides=$('ob-track').querySelectorAll('.ob-slide');
+  slides.forEach((sl,k)=>{
     const s=OB_STEPS[+sl.dataset.i], done=!!observer;
     const a=sl.querySelector('.ob-actbtn'), al=sl.querySelector('.ob-alt');
-    if(a) a.style.display = (s && s.run && done) ? 'none' : 'block';
+    if(a) a.style.display = (s && s.run && done) ? 'none' : 'block';   // hide "use location" CTA once located
     if(al) al.style.display = (s && s.run && done) ? 'none' : 'block';
+    if(k===obStep){ sl.classList.remove('active'); void sl.offsetWidth; sl.classList.add('active'); }
+    else sl.classList.remove('active');
   });
-  if(!silent) SFX.nav();
+  if(!silent){
+    (obStep>prev ? SFX.swipeOpen : obStep<prev ? SFX.swipeClose : SFX.nav)();   // rising when advancing, falling when going back
+    Haptics.swipe();
+  }
 }
 function initObSwipe(){
   const view=$('ob-view'); if(!view) return;
@@ -6743,7 +6804,10 @@ function initObSwipe(){
 function startOnboard(){
   buildOnboard();
   $('onboard').classList.add('show');
-  requestAnimationFrame(()=>{ obPos(0,false); obGo(0, true); });
+  const bar=$('ob-prog'); if(bar && bar.firstChild) bar.firstChild.style.width=(100/OB_STEPS.length)+'%';
+  requestAnimationFrame(()=>{ obPos(0,false); obGo(0, true);
+    try{ SFX.swipeOpen(); }catch(e){} Haptics.nav();   // soft "lift-off" as the tour opens
+  });
 }
 function endOnboard(){
   $('onboard').classList.remove('show');
@@ -6751,9 +6815,10 @@ function endOnboard(){
   if(!observer) updateLocHint();
 }
 function initOnboard(){
-  $('ob-skip').onclick=endOnboard;
+  $('ob-skip').onclick=()=>{ SFX.swipeClose(); Haptics.tap(); endOnboard(); };
   $('ob-back').onclick=()=>obGo(obStep-1);
-  $('ob-next').onclick=()=>{ if(obStep<OB_STEPS.length-1) obGo(obStep+1); else { SFX.success(); Haptics.success(); endOnboard(); } };
+  $('ob-next').onclick=()=>{ if(obStep<OB_STEPS.length-1) obGo(obStep+1);
+    else { SFX.fanfare(); Haptics.unlock(); try{ fireConfetti(); }catch(e){} endOnboard(); } };   // premium finish
   document.addEventListener('keydown', e=>{
     if(!$('onboard').classList.contains('show')) return;
     if(e.key==='ArrowRight') obGo(obStep+1);
