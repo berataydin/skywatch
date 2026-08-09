@@ -2080,6 +2080,15 @@
   .ul-sticky{padding-bottom:22px}
   .ul-pts{flex:0 0 auto;font-size:17px;font-weight:800;color:rgb(var(--ul-c,255,211,77));font-variant-numeric:tabular-nums;
     text-shadow:0 0 16px rgba(var(--ul-c,255,211,77),.75)}
+  /* Action buttons inside a premium card (e.g. friend-request Accept / Decline) */
+  .ul-actions{display:none;gap:8px;margin-top:10px}
+  .ul-actions.show{display:flex}
+  .ul-act{flex:1 1 auto;min-height:38px;padding:8px 14px;border-radius:11px;cursor:pointer;font:inherit;
+    font-size:13px;font-weight:700;border:1px solid var(--border);background:rgba(255,255,255,.06);color:var(--text)}
+  .ul-act.primary{border-color:rgba(var(--ul-c),.6);background:rgba(var(--ul-c),.2);color:rgb(var(--ul-c));
+    box-shadow:0 0 0 1px rgba(var(--ul-c),.25),0 4px 16px rgba(var(--ul-c),.22)}
+  .ul-act.primary:hover{background:rgba(var(--ul-c),.3)}
+  .ul-act.ghost{color:var(--muted)} .ul-act.ghost:hover{color:var(--text);border-color:var(--muted)}
   /* Three buzzes, keyed frame-for-frame to the [16,55,16,55,130] haptic pattern.
      Total 272ms, so the card physically does what the phone is doing. */
   .ul-shake{animation:ul-shake 500ms .38s cubic-bezier(.36,.07,.19,.97) var(--ul-shakes,1) both}
@@ -2496,6 +2505,7 @@
       <div class="ul-kicker">Award unlocked</div>
       <div class="ul-name" id="ul-name">—</div>
       <div class="ul-desc" id="ul-desc">—</div>
+      <div class="ul-actions" id="ul-actions"></div>
     </div>
     <div class="ul-pts" id="ul-pts">+0</div>
   </div>
@@ -3205,7 +3215,7 @@
 </script>
 
 <script>
-const BUILD = 'v257';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v258';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -8291,11 +8301,14 @@ function admRenderMessaging(pane){
     admSec('Preview user nudges')+
     '<div class="usr-note">Bypass the normal timing/throttling to see a nudge on demand.</div>'+
     '<div class="usr-row"><button id="adm-testnudge" class="usr-btn">👋 Preview username nudge</button></div>'+
-    '<div class="usr-row"><button id="adm-testinstall" class="usr-btn">📲 Preview install nudge</button></div>';
+    '<div class="usr-row"><button id="adm-testinstall" class="usr-btn">📲 Preview install nudge</button></div>'+
+    '<div class="usr-row"><button id="adm-testfriendreq" class="usr-btn">🤝 Preview friend-request popup</button></div>';
   admRenderBroadcast($('adm-msg-bc'));
   const ln=$('adm-loginnotify'); if(ln) ln.onclick=admToggleLoginNotify;
   const tn=$('adm-testnudge'); if(tn) tn.onclick=()=>{ dismiss(); showUsernameNudge(); };
   const ti=$('adm-testinstall'); if(ti) ti.onclick=()=>{ dismiss(); showInstallNudge(); };
+  const tf=$('adm-testfriendreq'); if(tf) tf.onclick=()=>{ dismiss();
+    showReqPop({ uid:'__test', username:'stargazer', displayName:'Alex Rivera', photoURL:'' }); };
 }
 /* Config tab — global levers: score maintenance, feature kill-switches, and the admin roster. */
 function admRenderConfig(pane){
@@ -10350,6 +10363,16 @@ function showPremiumCard(o){
   const pts=$('ul-pts');
   if(o.right){ pts.innerHTML=o.right; pts.className='ul-pts ul-side'; pts.style.display=''; }
   else { pts.className='ul-pts'; pts.textContent=o.pts||''; pts.style.display=o.pts?'':'none'; }
+  // Optional action buttons (Accept / Decline, etc.) — clicking one runs its handler and dismisses.
+  const acts=$('ul-actions'); acts.innerHTML=''; acts.classList.remove('show');
+  if(Array.isArray(o.actions) && o.actions.length){
+    acts.classList.add('show');
+    o.actions.slice(0,2).forEach(a=>{
+      const b=document.createElement('button'); b.className='ul-act'+(a.cls?(' '+a.cls):''); b.textContent=a.label;
+      b.onclick=(ev)=>{ ev.stopPropagation(); try{ SFX.tap(); Haptics.tap(); }catch(e){} hide(); try{ a.fn&&a.fn(); }catch(e){} };
+      acts.appendChild(b);
+    });
+  }
   // A new card supersedes whatever is on screen — but the old one's callback still
   // runs, so queues (award unlocks) can't stall behind a passing toast.
   if(pcHide){ const prev=pcHide; pcHide=null; prev(true); }
@@ -10429,16 +10452,16 @@ function fireConfetti(){
   const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
   cv.classList.add('on');
   const COLORS=['#ffd34d','#5ad1ff','#57e08a','#ff6bb4','#c58cff','#ffffff'];
-  const N=Math.min(150, Math.round(W/3));
+  const N=Math.min(220, Math.round(W/2.2));       // more pieces for full-screen coverage
   const bits=[];
   for(let i=0;i<N;i++){
     const leaf = Math.random()<0.45;              // ~half drift down slowly, swaying like a falling leaf
     const r=Math.random;
     bits.push({
-      x: W*0.5 + (r()-0.5)*W*0.5,
-      y: H + 20 + r()*40,
-      vx:(r()-0.5)*(leaf?4:7),
-      vy:-((leaf?6:11)+r()*(leaf?7:11)),           // launched upward from the card (leaves more gently)
+      x: r()*W,                                    // spread across the whole width
+      y: H + 10 + r()*40,                          // launch from just below the bottom edge
+      vx:(r()-0.5)*(leaf?5:9),
+      vy:-((leaf?9:16)+r()*(leaf?9:22)),           // a wide, strong lift so pieces reach the very top — full-screen
       w: 5+r()*6, h: 8+r()*8,
       rot: r()*Math.PI, vr:(r()-0.5)*(leaf?0.5:0.34),
       c: COLORS[(r()*COLORS.length)|0],
@@ -12043,6 +12066,7 @@ async function sendFriendRequest(u){
   }catch(e){ console.error(e); showErr('Could not send request: '+(e.code||e.message||e)); }
 }
 async function acceptRequest(r){
+  if(r && r.uid==='__test'){ showToast('✓ (preview) accepted', true); return; }   // admin preview — no write
   if(!window.fb||!currentUser) return;
   const {db, doc, setDoc, deleteDoc}=window.fb; const me=currentUser.uid;
   try{
@@ -12053,6 +12077,7 @@ async function acceptRequest(r){
   }catch(e){ console.error(e); showErr('Could not accept: '+(e.code||e.message||e)); }
 }
 async function denyRequest(uid, uname){
+  if(uid==='__test'){ showToast('(preview) declined'); return; }   // admin preview — no write
   if(!window.fb||!currentUser) return;
   const {db, doc, deleteDoc}=window.fb;
   try{ await deleteDoc(doc(db,'profiles',currentUser.uid,'requests',uid)); showToast('Declined @'+(uname||''));
@@ -12070,12 +12095,25 @@ function renderRequests(){
   el.querySelectorAll('.fr-den').forEach(b=>b.onclick=()=>denyRequest(b.dataset.uid, b.dataset.un));
   renderDirectory();
 }
+// Incoming friend request → a premium card with Accept / Decline actions.
 function showReqPop(r){
-  const pop=$('reqpop'); if(!pop) return;
-  pop._req=r; $('rp-name').textContent='@'+r.username; pop.classList.add('show');
-  clearTimeout(pop._tm); pop._tm=setTimeout(()=>pop.classList.remove('show'), 12000);
+  const photo=r.photoURL;
+  showPremiumCard({
+    hue:'168,130,255',
+    icon: photo ? ('<img src="'+esc(photo)+'" referrerpolicy="no-referrer" alt="">') : '👋',
+    figure: !!photo,
+    kicker:'Friend request',
+    name:'@'+(r.username||'someone'),
+    desc:(r.displayName?(esc(r.displayName)+' '):'')+'wants to be your friend',
+    ms:14000,
+    actions:[
+      {label:'✓ Accept', cls:'primary', fn:()=>acceptRequest(r)},
+      {label:'Decline',  cls:'ghost',   fn:()=>denyRequest(r.uid, r.username)}
+    ]
+  });
+  try{ SFX.select(); }catch(e){} Haptics.reaction();
 }
-function hideReqPop(){ const pop=$('reqpop'); if(pop) pop.classList.remove('show'); }
+function hideReqPop(){ if(pcHide) pcHide(); }   // dismiss the current premium card if it's the request
 let lbFriendsOnly=false, lbSort='score';
 const LB_SORTS={ score:'Points', badges:'Objects', sightings:'Sightings', streak:'Streak' };
 function renderLeaderboard(){
