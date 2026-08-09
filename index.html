@@ -44,7 +44,7 @@
   .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
 
   /* Top bar */
-  #topbar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:18px;
+  #topbar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:18px;flex-wrap:nowrap;
     padding:12px 18px;z-index:20;pointer-events:none;
     background:linear-gradient(180deg,rgba(3,6,15,.85),rgba(3,6,15,0));}
   #brand{display:flex;align-items:baseline;gap:10px;pointer-events:auto}
@@ -67,6 +67,7 @@
   #compass .cmp-hub{fill:rgb(var(--neon-c))}
   #compass #cmp-rose{transform-origin:20px 20px;transition:transform .18s linear}
   #compass #cmp-lbl{color:var(--text);font-weight:700;font-size:11px;
+    white-space:nowrap;min-width:60px;text-align:center;box-sizing:border-box;   /* fixed box so a 3-letter heading (e.g. NNW) never changes the banner width */
     text-shadow:0 0 10px rgba(var(--neon-c),.5),0 1px 4px rgba(0,0,0,.9)}
   #compass.live .cmp-ring{stroke:rgba(var(--neon-c),.85);
     filter:drop-shadow(0 0 6px rgba(var(--neon-c),.6))}
@@ -74,10 +75,11 @@
   #compass.off #cmp-rose{transform:none}
   @media (max-width:820px){
     #compass svg{width:26px;height:26px}
-    #compass #cmp-lbl{font-size:10px}
+    #compass #cmp-lbl{font-size:10px;min-width:52px}
   }
-  #stat{display:flex;gap:16px;pointer-events:auto;align-items:flex-start}
+  #stat{display:flex;gap:16px;pointer-events:auto;align-items:flex-start;flex-wrap:nowrap;flex-shrink:0}
   #stat .stat{min-width:60px}
+  #stat .stat b,#stat .stat span{white-space:nowrap}   /* keep "Above you"/"In orbit" on one line each */
   .stat{position:relative;text-align:center;padding:0 2px}
   /* Labels get the same tube treatment as the wordmark, just dimmer and smaller. */
   .stat b{display:block;font-size:9px;letter-spacing:1.6px;text-transform:uppercase;font-weight:800;
@@ -2828,7 +2830,7 @@
   <div id="stg-pane-dev"><div id="dev-body"></div>
     <div class="dev-sec">Actions</div>
     <button id="dev-copy" class="usr-btn">📋 Copy diagnostics</button>
-    <button id="dev-update" class="usr-btn" style="display:none">⬆ Apply pending update</button>
+    <button id="dev-update" class="usr-btn">⬆ Load the latest version</button>
     <button id="dev-off" class="idf-uap">Turn off developer mode</button>
     <div class="dev-sec dev-danger">Danger zone</div>
     <button id="dev-nuke" class="usr-btn danger">💣 Clear caches &amp; hard reload</button>
@@ -3203,7 +3205,7 @@
 </script>
 
 <script>
-const BUILD = 'v254';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v256';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -7913,20 +7915,28 @@ function initDevMode(){
   const cp=$('dev-copy'); if(cp) cp.onclick=async ()=>{
     try{ await navigator.clipboard.writeText(lastDevDiag||('SkyWatch '+BUILD)); showToast('📋 Diagnostics copied', true); }
     catch(e){ showErr('Copy failed — clipboard blocked'); } };
-  const up=$('dev-update'); if(up) up.onclick=devApplyUpdate;
+  const up=$('dev-update'); if(up) up.onclick=e=>devApplyUpdate(e.currentTarget);
   syncSettingsTabs();
 }
 /* Apply a service-worker update that's sitting in "waiting" without the nuclear cache wipe:
    tell the waiting worker to skipWaiting, then reload once it takes control. */
-async function devApplyUpdate(){
+async function devApplyUpdate(btn){
+  if(btn){ btn.disabled=true; btn.textContent='Checking…'; }
+  showToast('Fetching the latest version…', true);
   try{
     const reg=await navigator.serviceWorker.getRegistration();
-    if(reg && reg.waiting){
-      navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload(), {once:true});
-      reg.waiting.postMessage('skipWaiting');
-      showToast('Applying update…', true);
-    } else { location.reload(); }
-  }catch(e){ location.reload(); }
+    if(reg){
+      try{ await reg.update(); }catch(e){}                 // pull the newest service worker if one exists
+      if(reg.waiting){                                     // activate a freshly-installed one, then reload on takeover
+        navigator.serviceWorker.addEventListener('controllerchange', ()=>location.reload(), {once:true});
+        reg.waiting.postMessage('skipWaiting');
+        setTimeout(()=>location.reload(), 1200);           // fallback if controllerchange doesn't fire
+        return;
+      }
+    }
+  }catch(e){}
+  // The app code is all inline in index.html (served network-first), so a plain reload pulls it fresh.
+  location.reload();
 }
 function startDevRefresh(){
   renderDev();
@@ -8058,7 +8068,9 @@ async function renderDev(){
   const ce=$('dev-clearerr'); if(ce) ce.onclick=(ev)=>{ ev.stopPropagation(); devErrors.length=0; devErrExpanded.clear(); const b=$('dev-badge'); if(b) b.textContent='0'; renderDev(); };
   el.querySelectorAll('.dev-err.has-more').forEach(row=>row.onclick=()=>{
     const at=+row.dataset.eat; if(devErrExpanded.has(at)) devErrExpanded.delete(at); else devErrExpanded.add(at); renderDev(); });
-  const up=$('dev-update'); if(up) up.style.display = (swState==='update waiting') ? 'block' : 'none';
+  // "Load the latest version" is always available; relabel when an update is genuinely waiting.
+  const up=$('dev-update'); if(up && !up.disabled){ up.style.display='block';
+    up.textContent = (swState==='update waiting') ? '⬆ Apply the pending update' : '⬆ Load the latest version'; }
   el.scrollTop=wasScroll;
 }
 /* ---------- Feedback (user side) ---------- */
@@ -10431,7 +10443,7 @@ function fireConfetti(){
       life: 0
     });
   }
-  const GRAV=0.34, DRAG=0.992, MAXLIFE=280;
+  const GRAV=0.19, DRAG=0.994, MAXLIFE=620;    // floatier fall + a much longer life so it lingers
   cancelAnimationFrame(confettiRAF);
   (function step(){
     ctx.clearRect(0,0,W,H);
@@ -10442,7 +10454,7 @@ function fireConfetti(){
       b.x+=b.vx; b.y+=b.vy; b.rot+=b.vr;
       if(b.y<H+60 && b.life<MAXLIFE){
         alive++;
-        const fade=Math.max(0, 1-Math.max(0,(b.life-MAXLIFE*0.7))/(MAXLIFE*0.3));
+        const fade=Math.max(0, 1-Math.max(0,(b.life-MAXLIFE*0.72))/(MAXLIFE*0.28));   // hold full opacity longer, then ease out
         ctx.save();
         ctx.globalAlpha=fade;
         ctx.translate(b.x,b.y); ctx.rotate(b.rot);
