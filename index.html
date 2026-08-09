@@ -3205,7 +3205,7 @@
 </script>
 
 <script>
-const BUILD = 'v256';           // shown in Settings and on the loader so you can confirm what's deployed
+const BUILD = 'v257';           // shown in Settings and on the loader so you can confirm what's deployed
 
 /* ---------- Crash log ----------
    Installed before anything else so it catches boot failures too. A silent
@@ -10432,26 +10432,35 @@ function fireConfetti(){
   const N=Math.min(150, Math.round(W/3));
   const bits=[];
   for(let i=0;i<N;i++){
+    const leaf = Math.random()<0.45;              // ~half drift down slowly, swaying like a falling leaf
+    const r=Math.random;
     bits.push({
-      x: W*0.5 + (Math.random()-0.5)*W*0.5,
-      y: H + 20 + Math.random()*40,
-      vx:(Math.random()-0.5)*7,
-      vy:-(11+Math.random()*11),                    // launched upward from the card
-      w: 5+Math.random()*6, h: 8+Math.random()*8,
-      rot: Math.random()*Math.PI, vr:(Math.random()-0.5)*0.34,
-      c: COLORS[(Math.random()*COLORS.length)|0],
+      x: W*0.5 + (r()-0.5)*W*0.5,
+      y: H + 20 + r()*40,
+      vx:(r()-0.5)*(leaf?4:7),
+      vy:-((leaf?6:11)+r()*(leaf?7:11)),           // launched upward from the card (leaves more gently)
+      w: 5+r()*6, h: 8+r()*8,
+      rot: r()*Math.PI, vr:(r()-0.5)*(leaf?0.5:0.34),
+      c: COLORS[(r()*COLORS.length)|0],
+      leaf,
+      g:   leaf ? 0.055+r()*0.045 : 0.19+r()*0.05, // per-piece gravity — leaves fall much slower
+      drag:leaf ? 0.972 : 0.988,                   // and meet much more air resistance
+      sway:leaf ? 20+r()*24 : 3+r()*5,             // side-to-side amplitude
+      sw:  0.020+r()*0.030, ph:r()*6.283,          // sway speed + phase
       life: 0
     });
   }
-  const GRAV=0.19, DRAG=0.994, MAXLIFE=620;    // floatier fall + a much longer life so it lingers
+  const MAXLIFE=760;                               // long life so the slow leaves get their full drift
   cancelAnimationFrame(confettiRAF);
   (function step(){
     ctx.clearRect(0,0,W,H);
     let alive=0;
     for(const b of bits){
       b.life++;
-      b.vy+=GRAV; b.vx*=DRAG; b.vy*=DRAG;
-      b.x+=b.vx; b.y+=b.vy; b.rot+=b.vr;
+      b.vy+=b.g; b.vx*=b.drag; b.vy*=b.drag;
+      const swayV=Math.sin(b.life*b.sw + b.ph)*b.sway*0.05;   // gentle horizontal drift
+      b.x+=b.vx+swayV; b.y+=b.vy;
+      b.rot+=b.vr + (b.leaf ? swayV*0.03 : 0);               // leaves rock as they sway
       if(b.y<H+60 && b.life<MAXLIFE){
         alive++;
         const fade=Math.max(0, 1-Math.max(0,(b.life-MAXLIFE*0.72))/(MAXLIFE*0.28));   // hold full opacity longer, then ease out
